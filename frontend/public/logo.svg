@@ -1,0 +1,29 @@
+        <svg
+          width="64"
+          height="64"
+          viewBox="0 0 64 64"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect width="64" height="64" rx="16" fill="#1F3A5F" />
+
+          <path
+            d="M20 26C22 22 28 22 32 26C36 22 42 22 44 26C42 28 38 30 32 30C26 30 22 28 20 26Z"
+            fill="#C0392B"
+          />
+
+          <circle cx="24" cy="40" r="4" stroke="white" stroke-width="2" />
+          <circle cx="40" cy="40" r="4" stroke="white" stroke-width="2" />
+          <path
+            d="M27 37L37 27"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            d="M37 37L27 27"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
