@@ -147,10 +147,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      <header className="fixed z-10 min-w-screen flex items-center justify-between px-6 py-3 bg-accent/70 backdrop-blur">
+      <header className="fixed z-10 min-w-screen flex items-center text-sm justify-between px-6 py-3 bg-accent/70 backdrop-blur">
         <div className="flex space-x-2 items-center">
           <Image src="/logo.svg" alt="Logo" height={40} width={40} />
-          <h1 className="font-bold text-primary-foreground text-xl">
+          <h1 className="font-bold text-primary-foreground text-md">
             Tols Barbershop
           </h1>
         </div>
@@ -169,7 +169,7 @@ export default function Home() {
         </nav>
 
         <button className="bg-primary hover:bg-primary/90 text-white py-2 px-4 rounded-md">
-          Get Started
+          Login
         </button>
       </header>
 
