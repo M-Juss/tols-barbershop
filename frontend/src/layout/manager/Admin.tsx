@@ -67,7 +67,7 @@ export function Admin() {
   };
 
   return (
-    <div className="w-full bg-slate-100 p-4 sm:p-6 font-sans">
+    <div className="w-full h-full bg-slate-100 p-4 sm:p-6 font-sans">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>

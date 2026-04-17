@@ -52,7 +52,7 @@ export function Slots() {
   ];
 
   return (
-    <div className="w-full bg-slate-100 p-4 sm:p-6 font-sans">
+    <div className="w-full h-full bg-slate-100 p-4 sm:p-6 font-sans">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">

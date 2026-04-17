@@ -89,7 +89,7 @@ export function Overview() {
     : [];
 
   return (
-    <div className="w-full bg-slate-100 p-6 font-sans min-h-screen">
+    <div className="w-full h-full bg-slate-100 p-6 font-sans min-h-screen">
 
       {/* Header */}
       <div className="mb-6">

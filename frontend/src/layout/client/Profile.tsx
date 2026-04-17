@@ -4,7 +4,7 @@ import { AccountInformationForm } from "@/forms/AccountInformationForm";
 
 export function Profile() {
   return (
-    <div className="w-full max-h-screen bg-slate-100 p-6 font-sans">
+    <div className="w-full h-full bg-slate-100 p-6 font-sans">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Profile</h1>

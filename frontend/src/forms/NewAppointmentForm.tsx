@@ -34,7 +34,7 @@ const timeOptions = [
 
 export function NewAppointmentForm({ onBack }: NewAppointmentFormProps) {
   return (
-    <div className="w-full bg-slate-100 p-6 font-sans">
+    <div className="w-full h-full bg-slate-100 p-6 font-sans">
       <button
         onClick={onBack}
         className="flex items-center gap-1.5 text-gray-700 font-medium text-sm mb-6 hover:text-gray-900 transition-colors"
