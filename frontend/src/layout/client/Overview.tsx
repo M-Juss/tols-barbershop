@@ -1,4 +1,5 @@
 import { CalendarDays, CheckCircle2, Clock, Settings, CalendarPlus } from "lucide-react";
+import { StatCard } from "@/components/common/StatCard";
 
 export function Overview() {
   return (
@@ -11,38 +12,27 @@ export function Overview() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-3 gap-4 mb-4">
-        {/* Completed */}
-        <div className="bg-white rounded-xl p-5 flex items-center justify-between shadow-sm border border-gray-100">
-          <div>
-            <p className="text-gray-500 text-sm mb-1">Completed</p>
-            <p className="text-3xl font-bold text-gray-900">3</p>
-          </div>
-          <div className="bg-green-100 rounded-2xl p-3">
-            <CheckCircle2 className="text-green-500 w-7 h-7" strokeWidth={2} />
-          </div>
-        </div>
-
-        {/* Upcoming */}
-        <div className="bg-white rounded-xl p-5 flex items-center justify-between shadow-sm border border-gray-100">
-          <div>
-            <p className="text-gray-500 text-sm mb-1">Upcoming</p>
-            <p className="text-3xl font-bold text-gray-900">1</p>
-          </div>
-          <div className="bg-blue-100 rounded-2xl p-3">
-            <CalendarDays className="text-blue-500 w-7 h-7" strokeWidth={2} />
-          </div>
-        </div>
-
-        {/* Pending */}
-        <div className="bg-white rounded-xl p-5 flex items-center justify-between shadow-sm border border-gray-100">
-          <div>
-            <p className="text-gray-500 text-sm mb-1">Pending</p>
-            <p className="text-3xl font-bold text-gray-900">1</p>
-          </div>
-          <div className="bg-yellow-100 rounded-2xl p-3">
-            <Clock className="text-yellow-500 w-7 h-7" strokeWidth={2} />
-          </div>
-        </div>
+        <StatCard
+          label="Completed"
+          value="3"
+          icon={CheckCircle2}
+          iconContainerClassName="bg-green-100"
+          iconClassName="text-green-500"
+        />
+        <StatCard
+          label="Upcoming"
+          value="1"
+          icon={CalendarDays}
+          iconContainerClassName="bg-blue-100"
+          iconClassName="text-blue-500"
+        />
+        <StatCard
+          label="Pending"
+          value="1"
+          icon={Clock}
+          iconContainerClassName="bg-yellow-100"
+          iconClassName="text-yellow-500"
+        />
       </div>
 
       {/* Upcoming Appointments */}

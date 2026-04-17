@@ -1,6 +1,7 @@
 "use client";
 import { Clock, Mail, MapPin, Phone, Scissors, Star } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const navLinks = [
@@ -168,9 +169,12 @@ export default function Home() {
           ))}
         </nav>
 
-        <button className="bg-primary hover:bg-primary/90 text-white py-2 px-4 rounded-md">
+        <Link
+          href="/login"
+          className="bg-primary hover:bg-primary/90 text-white py-2 px-4 rounded-md"
+        >
           Login
-        </button>
+        </Link>
       </header>
 
       <main>
@@ -196,9 +200,12 @@ export default function Home() {
               <p className="text-white/80 mb-6">
                 Where classic meets modern style
               </p>
-              <button className="bg-accent/80 text-accent-foreground px-6 py-3 rounded-xl">
+              <Link
+                href="/login"
+                className="bg-accent/80 text-accent-foreground px-6 py-3 rounded-xl inline-block"
+              >
                 Book Appointment
-              </button>
+              </Link>
             </div>
           </div>
         </section>

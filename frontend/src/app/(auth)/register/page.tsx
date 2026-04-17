@@ -1,5 +1,7 @@
 import Image from "next/image";
 
+import { RegisterForm } from "@/forms/RegisterForm";
+
 export default function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-primary">
@@ -15,70 +17,7 @@ export default function RegisterPage() {
           Fill in the details to create your account.
         </p>
 
-        <form action="" className="w-full">
-          <div className="mb-4">
-            <label
-              htmlFor="name"
-              className="block text-gray-700 font-medium mb-2"
-            >
-              Full Name
-            </label>
-            <input
-              type="text"
-              id="name"
-              className="border border-gray-300 w-full rounded-md py-2 px-4 focus:outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Enter your full name"
-            />
-          </div>
-          <div className="mb-4">
-            <label
-              htmlFor="email"
-              className="block text-gray-700 font-medium mb-2"
-            >
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              className="border border-gray-300 w-full rounded-md py-2 px-4 focus:outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Enter your email"
-            />
-          </div>
-          <div className="mb-4">
-            <label
-              htmlFor="password"
-              className="block text-gray-700 font-medium mb-2"
-            >
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              className="border border-gray-300 w-full rounded-md py-2 px-4 mb-2 focus:outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Enter your password"
-            />
-          </div>
-          <div className="mb-4">
-            <label
-              htmlFor="password"
-              className="block text-gray-700 font-medium mb-2"
-            >
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              className="border border-gray-300 w-full rounded-md py-2 px-4 mb-2 focus:outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Enter your password"
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-accent hover:bg-accent/90 mb-4 w-full text-white py-2 px-4 rounded-md transition duration-300"
-          >
-            Register
-          </button>
-        </form>
+        <RegisterForm />
         <p>
           Already have an account?{" "}
           <a href="/login" className="text-accent hover:underline">

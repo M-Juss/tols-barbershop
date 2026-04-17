@@ -1,4 +1,6 @@
-import { CalendarDays, Lock, Mail, Pencil, Trash2, User } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
+
+import { AccountInformationForm } from "@/forms/AccountInformationForm";
 
 export function Profile() {
   return (
@@ -9,56 +11,7 @@ export function Profile() {
         <p className="text-gray-500 mt-1">Manage your account settings and preferences</p>
       </div>
 
-      {/* Account Information */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-4">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Account Information</h2>
-            <p className="text-gray-500 text-sm mt-0.5">Your personal details</p>
-          </div>
-          <button className="flex items-center gap-2 border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors">
-            <Pencil className="w-4 h-4" strokeWidth={2} />
-            Edit
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-          {/* Full Name */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Full Name</label>
-            <div className="flex items-center gap-2.5 bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm">
-              <User className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-              <span>John Dela Cruz</span>
-            </div>
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Email</label>
-            <div className="flex items-center gap-2.5 bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm">
-              <Mail className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-              <span>john.delacruz@email.com</span>
-            </div>
-          </div>
-
-          {/* Contact Number */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Contact Number</label>
-            <div className="flex items-center bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm">
-              <span>+63 912 345 6789</span>
-            </div>
-          </div>
-
-          {/* Member Since */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Member Since</label>
-            <div className="flex items-center gap-2.5 bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm">
-              <CalendarDays className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-              <span>January 15, 2024</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <AccountInformationForm />
 
       {/* Account Control */}
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">

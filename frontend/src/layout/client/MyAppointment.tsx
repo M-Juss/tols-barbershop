@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { CalendarDays, ChevronDown, ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { AppointmentCard, type AppointmentStatus } from "@/components/common/AppointmentCard";
+import { NewAppointmentForm } from "@/forms/NewAppointmentForm";
 
-type Status = "Upcoming" | "Pending" | "Completed" | "Rejected";
+type Status = AppointmentStatus;
 
 interface Appointment {
   id: number;
@@ -77,13 +79,6 @@ const mockAppointments: Appointment[] = [
   },
 ];
 
-const statusBadge: Record<Status, string> = {
-  Upcoming: "bg-blue-100 text-blue-500",
-  Pending: "bg-yellow-100 text-yellow-600",
-  Completed: "bg-green-100 text-green-600",
-  Rejected: "bg-red-100 text-red-500",
-};
-
 const tabs: Status[] = ["Upcoming", "Pending", "Completed", "Rejected"];
 
 function countByStatus(status: Status) {
@@ -138,161 +133,18 @@ export function AppointmentList({ onNew }: { onNew: () => void }) {
           </div>
         ) : (
           filtered.map((apt) => (
-            <div
+            <AppointmentCard
               key={apt.id}
-              className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 rounded-xl p-2.5 shrink-0">
-                    <CalendarDays className="text-blue-500 w-5 h-5" strokeWidth={2} />
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900 text-base">{apt.service}</p>
-                    <p className="text-gray-500 text-sm">Barber: {apt.barber}</p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  <p className="font-bold text-gray-900 text-lg">₱{apt.price}</p>
-                  <span
-                    className={`text-xs font-medium px-3 py-1 rounded-full ${statusBadge[apt.status]}`}
-                  >
-                    {apt.status}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div>
-                  <p className="text-gray-400 text-xs mb-0.5">Date & Time</p>
-                  <p className="text-gray-900 font-semibold text-sm">
-                    {apt.date} at {apt.time}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs mb-0.5">Client</p>
-                  <p className="text-gray-900 font-semibold text-sm">{apt.client}</p>
-                </div>
-              </div>
-            </div>
+              service={apt.service}
+              barber={apt.barber}
+              price={apt.price}
+              status={apt.status}
+              date={apt.date}
+              time={apt.time}
+              client={apt.client}
+            />
           ))
         )}
-      </div>
-
-    </div>
-  );
-}
-
-// ── New Appointment Form View ──────────────────────────────────────────────
-function NewAppointmentForm({ onBack }: { onBack: () => void }) {
-  return (
-    <div className="w-full bg-slate-100 p-6 font-sans">
-      {/* Back */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-gray-700 font-medium text-sm mb-6 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" strokeWidth={2} />
-        Back to Appointments
-      </button>
-
-      {/* Form Card */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h2 className="text-base font-bold text-gray-900">New Appointment</h2>
-        <p className="text-gray-500 text-sm mt-0.5 mb-6">
-          Fill in the details to book your appointment
-        </p>
-
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5">
-          {/* Full Name */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Full Name</label>
-            <input
-              type="text"
-              placeholder="John Dela Cruz"
-              className="w-full bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm outline-none"
-              readOnly
-            />
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Email</label>
-            <input
-              type="email"
-              placeholder="john.delacruz@email.com"
-              className="w-full bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm outline-none"
-              readOnly
-            />
-          </div>
-
-          {/* Contact Number */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Contact Number</label>
-            <input
-              type="text"
-              placeholder="+63 912 345 6789"
-              className="w-full bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm outline-none"
-              readOnly
-            />
-          </div>
-
-          {/* Service */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Service</label>
-            <div className="flex items-center justify-between bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm cursor-pointer">
-              <span>Select a service</span>
-              <ChevronDown className="w-4 h-4 shrink-0" strokeWidth={2} />
-            </div>
-          </div>
-
-          {/* Barber */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Barber</label>
-            <div className="flex items-center justify-between bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm cursor-pointer">
-              <span>Select a barber</span>
-              <ChevronDown className="w-4 h-4 shrink-0" strokeWidth={2} />
-            </div>
-          </div>
-
-          {/* Date */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Date</label>
-            <div className="flex items-center gap-2.5 bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm cursor-pointer">
-              <CalendarDays className="w-4 h-4 shrink-0" strokeWidth={1.8} />
-              <span>Pick a date</span>
-            </div>
-          </div>
-
-          {/* Time */}
-          <div>
-            <label className="block text-sm font-bold text-gray-900 mb-1.5">Time</label>
-            <div className="flex items-center justify-between bg-gray-100 rounded-lg px-3 py-2.5 text-gray-400 text-sm cursor-pointer">
-              <span>Select time</span>
-              <ChevronDown className="w-4 h-4 shrink-0" strokeWidth={2} />
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-3 mt-8">
-          <button className="flex-1 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-xl py-3 text-sm">
-            Book Appointment
-          </button>
-          <button
-            onClick={onBack}
-            className="border border-gray-200 rounded-xl px-6 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-
-      {/* Help Button */}
-      <div className="flex justify-end mt-4">
-        <button className="bg-gray-700 hover:bg-gray-600 transition-colors text-white rounded-full w-9 h-9 flex items-center justify-center text-base font-bold shadow-md">
-          ?
-        </button>
       </div>
     </div>
   );

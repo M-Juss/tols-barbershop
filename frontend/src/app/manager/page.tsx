@@ -1,22 +1,33 @@
 "use client";
 
 import { useState, type ElementType } from "react";
-import { Calendar, LayoutDashboard, LogOut, User } from "lucide-react";
+import {
+  User,
+  Calendar,
+  LayoutDashboard,
+  LogOut,
+  Scissors,
+  BriefcaseBusiness,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Overview } from "@/layout/client/Overview";
-import { Profile } from "@/layout/client/Profile";
-import { MyAppointment } from "@/layout/client/MyAppointment";
+import { Overview } from "@/layout/manager/Overview";
+import { Service } from "@/layout/manager/Service";
+import { Barber } from "@/layout/manager/Barber";
+import { Admin } from "@/layout/manager/Admin";
+import { Slots } from "@/layout/manager/Slots";
 
-type TabKey = "overview" | "appointments" | "profile";
+type TabKey = "overview" | "service" | "barber" | "admin" | "slots";
 
 export default function ClientPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
   const navItems: { key: TabKey; icon: ElementType; label: string }[] = [
     { key: "overview", icon: LayoutDashboard, label: "Overview" },
-    { key: "appointments", icon: Calendar, label: "My Appointment" },
-    { key: "profile", icon: User, label: "Profile" },
+    { key: "service", icon: BriefcaseBusiness, label: "Service" },
+    { key: "barber", icon: Scissors, label: "Barber" },
+    { key: "admin", icon: User, label: "Admin" },
+    { key: "slots", icon: Calendar, label: "Appointment Slots" },
   ];
 
   return (
@@ -58,8 +69,10 @@ export default function ClientPage() {
 
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
         {activeTab === "overview" && <Overview />}
-        {activeTab === "appointments" && <MyAppointment />}
-        {activeTab === "profile" && <Profile />}
+        {activeTab === "service" && <Service />}
+        {activeTab === "barber" && <Barber />}
+        {activeTab === "admin" && <Admin />}
+        {activeTab === "slots" && <Slots />}
       </main>
     </div>
   );
