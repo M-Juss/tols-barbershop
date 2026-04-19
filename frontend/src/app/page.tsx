@@ -80,7 +80,7 @@ const testimonials = [
 
 const cardAbout = [
   { h1: "15+", p: "Years of Experience" },
-  { h1: "5K+", p: "Happy Clients" },
+  { h1: "5K+", p: "Happy Customer" },
   { h1: "5", p: "Expert Barbers" },
   { h1: "100%", p: "Satisfaction" },
 ];
@@ -357,7 +357,7 @@ export default function Home() {
           className="xl:px-44 lg:px-24 md:px-22 sm:px-20 px-8 py-20 flex flex-col items-center bg-primary/95 text-center text-white"
         >
           <p className="md:text-5xl sm:text-4xl text-3xl font-semibold mb-4 ">
-            What Our Clients Say
+            What Our Customer Say
           </p>
           <p className="text-sm text-neutral-landing mb-8">
             Don't just take our word for it - hear from our satisfied clients

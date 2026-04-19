@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
-import { AppointmentCard, type AppointmentStatus } from "@/components/common/AppointmentCard";
-import { NewAppointmentForm } from "@/forms/NewAppointmentForm";
+import {
+  AppointmentCardCustomer,
+  type AppointmentStatus,
+} from "@/components/common/AppointmentCardCustomer";
 
 type Status = AppointmentStatus;
 
@@ -13,7 +14,6 @@ interface Appointment {
   status: Status;
   date: string;
   time: string;
-  client: string;
 }
 
 const mockAppointments: Appointment[] = [
@@ -22,10 +22,9 @@ const mockAppointments: Appointment[] = [
     service: "Premium Haircut + Beard Trim",
     barber: "Miguel Santos",
     price: 350,
-    status: "Upcoming",
+    status: "Approved",
     date: "Apr 20, 2026",
     time: "10:00 AM",
-    client: "John Dela Cruz",
   },
   {
     id: 2,
@@ -35,7 +34,6 @@ const mockAppointments: Appointment[] = [
     status: "Pending",
     date: "Apr 22, 2026",
     time: "2:00 PM",
-    client: "John Dela Cruz",
   },
   {
     id: 3,
@@ -45,7 +43,6 @@ const mockAppointments: Appointment[] = [
     status: "Completed",
     date: "Mar 15, 2026",
     time: "11:00 AM",
-    client: "John Dela Cruz",
   },
   {
     id: 4,
@@ -55,7 +52,6 @@ const mockAppointments: Appointment[] = [
     status: "Completed",
     date: "Feb 28, 2026",
     time: "3:30 PM",
-    client: "John Dela Cruz",
   },
   {
     id: 5,
@@ -65,7 +61,6 @@ const mockAppointments: Appointment[] = [
     status: "Completed",
     date: "Jan 10, 2026",
     time: "9:00 AM",
-    client: "John Dela Cruz",
   },
   {
     id: 6,
@@ -75,19 +70,25 @@ const mockAppointments: Appointment[] = [
     status: "Rejected",
     date: "Apr 18, 2026",
     time: "1:00 PM",
-    client: "John Dela Cruz",
   },
 ];
 
-const tabs: Status[] = ["Upcoming", "Pending", "Completed", "Rejected"];
+const tabs: Status[] = ["Pending", "Approved", "Completed", "Rejected"];
 
 function countByStatus(status: Status) {
   return mockAppointments.filter((a) => a.status === status).length;
 }
 
-// ── Appointment List View ──────────────────────────────────────────────────
-export function AppointmentList({ onNew }: { onNew: () => void }) {
-  const [activeTab, setActiveTab] = useState<Status>("Upcoming");
+const emptyStatusMessage: Record<Status, string> = {
+  Pending: "No pending appointments right now.",
+  Approved: "No approved appointments right now.",
+  Completed: "No completed appointments yet.",
+  Rejected: "No rejected appointments.",
+};
+
+// ── Root Component ─────────────────────────────────────────────────────────
+export function MyAppointment() {
+  const [activeTab, setActiveTab] = useState<Status>("Pending");
 
   const filtered = mockAppointments.filter((a) => a.status === activeTab);
 
@@ -97,15 +98,10 @@ export function AppointmentList({ onNew }: { onNew: () => void }) {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
-          <p className="text-gray-500 mt-1">View and manage your appointments</p>
+          <p className="text-gray-500 mt-1">
+            View and manage your appointments
+          </p>
         </div>
-        <button
-          onClick={onNew}
-          className="flex items-center gap-2 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-xl px-5 py-3 text-sm"
-        >
-          <Plus className="w-4 h-4" strokeWidth={2.5} />
-          New Appointment
-        </button>
       </div>
 
       {/* Tabs */}
@@ -126,37 +122,27 @@ export function AppointmentList({ onNew }: { onNew: () => void }) {
       </div>
 
       {/* Appointment Cards */}
-      <div className="flex flex-col gap-3">
+      <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
         {filtered.length === 0 ? (
-          <div className="bg-white rounded-xl p-10 text-center text-gray-400 border border-gray-100 shadow-sm">
-            No {activeTab.toLowerCase()} appointments.
+          <div className="rounded-lg p-10 text-center text-gray-400 border border-gray-100">
+            {emptyStatusMessage[activeTab]}
           </div>
         ) : (
-          filtered.map((apt) => (
-            <AppointmentCard
-              key={apt.id}
-              service={apt.service}
-              barber={apt.barber}
-              price={apt.price}
-              status={apt.status}
-              date={apt.date}
-              time={apt.time}
-              client={apt.client}
-            />
-          ))
+          <div className="flex flex-col gap-3">
+            {filtered.map((apt) => (
+              <AppointmentCardCustomer
+                key={apt.id}
+                service={apt.service}
+                barber={apt.barber}
+                price={apt.price}
+                status={apt.status}
+                date={apt.date}
+                time={apt.time}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
-  );
-}
-
-// ── Root Component ─────────────────────────────────────────────────────────
-export function MyAppointment() {
-  const [view, setView] = useState<"list" | "new">("list");
-
-  return view === "list" ? (
-    <AppointmentList onNew={() => setView("new")} />
-  ) : (
-    <NewAppointmentForm onBack={() => setView("list")} />
   );
 }

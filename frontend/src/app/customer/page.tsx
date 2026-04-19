@@ -1,20 +1,28 @@
 "use client";
 
 import { useState, type ElementType } from "react";
-import { Calendar, LayoutDashboard, LogOut, User } from "lucide-react";
+import {
+  Calendar,
+  CalendarPlus,
+  LayoutDashboard,
+  LogOut,
+  User,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Overview } from "@/layout/client/Overview";
-import { Profile } from "@/layout/client/Profile";
-import { MyAppointment } from "@/layout/client/MyAppointment";
+import { Overview } from "@/layout/customer/Overview";
+import { Profile } from "@/layout/customer/Profile";
+import { MyAppointment } from "@/layout/customer/MyAppointment";
+import { BookAppointment } from "@/layout/customer/BookAppointment";
 
-type TabKey = "overview" | "appointments" | "profile";
+type TabKey = "overview" | "appointments" | "book-appointment" | "profile";
 
-export default function ClientPage() {
+export default function CustomerPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
   const navItems: { key: TabKey; icon: ElementType; label: string }[] = [
     { key: "overview", icon: LayoutDashboard, label: "Overview" },
+    { key: "book-appointment", icon: CalendarPlus, label: "Book Appointment" },
     { key: "appointments", icon: Calendar, label: "My Appointment" },
     { key: "profile", icon: User, label: "Profile" },
   ];
@@ -57,7 +65,13 @@ export default function ClientPage() {
       </aside>
 
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
-        {activeTab === "overview" && <Overview />}
+        {activeTab === "overview" && (
+          <Overview
+            onBookAppointment={() => setActiveTab("book-appointment")}
+            onProfileSettings={() => setActiveTab("profile")}
+          />
+        )}
+        {activeTab === "book-appointment" && <BookAppointment />}
         {activeTab === "appointments" && <MyAppointment />}
         {activeTab === "profile" && <Profile />}
       </main>

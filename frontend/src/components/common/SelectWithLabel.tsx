@@ -44,7 +44,7 @@ export function SelectWithLabel({
       >
         <SelectTrigger
           id={id}
-          className="h-10 w-full border-gray-300 px-3 text-sm data-[placeholder]:text-muted-foreground"
+          className=" w-full border-gray-300 px-3 py-5 text-sm data-[placeholder]:text-muted-foreground"
         >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

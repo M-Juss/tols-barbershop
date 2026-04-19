@@ -1,7 +1,13 @@
 import { CalendarDays, CheckCircle2, Clock, Settings, CalendarPlus } from "lucide-react";
 import { StatCard } from "@/components/common/StatCard";
+import { AppointmentCardCustomer } from "@/components/common/AppointmentCardCustomer";
 
-export function Overview() {
+type OverviewProps = {
+  onBookAppointment: () => void;
+  onProfileSettings: () => void;
+};
+
+export function Overview({ onBookAppointment, onProfileSettings }: OverviewProps) {
   return (
     <div className="w-full h-full bg-slate-100 p-6 font-sans">
       {/* Header */}
@@ -40,34 +46,14 @@ export function Overview() {
         <h2 className="text-base font-bold text-gray-900">Upcoming Appointments</h2>
         <p className="text-gray-500 text-sm mb-4">Your scheduled appointments</p>
 
-        {/* Appointment Card */}
-        <div className="border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="bg-blue-100 rounded-xl p-2.5">
-              <CalendarDays className="text-blue-500 w-5 h-5" strokeWidth={2} />
-            </div>
-            <div>
-              <p className="font-bold text-gray-900 text-base">Premium Haircut + Beard Trim</p>
-              <p className="text-gray-500 text-sm mt-0.5">Barber: Miguel Santos</p>
-              <div className="flex items-center gap-4 mt-1.5 text-gray-500 text-sm">
-                <span className="flex items-center gap-1.5">
-                  <CalendarDays className="w-4 h-4 text-gray-400" strokeWidth={1.8} />
-                  Apr 20, 2026
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-gray-400" strokeWidth={1.8} />
-                  10:00 AM
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <p className="font-bold text-gray-900 text-lg">₱350</p>
-            <span className="bg-blue-100 text-blue-500 text-xs font-medium px-3 py-1 rounded-full">
-              Upcoming
-            </span>
-          </div>
-        </div>
+        <AppointmentCardCustomer
+          service="Premium Haircut + Beard Trim"
+          barber="Miguel Santos"
+          price={350}
+          status="Approved"
+          date="Apr 20, 2026"
+          time="10:00 AM"
+        />
       </div>
 
       {/* Quick Actions */}
@@ -77,7 +63,12 @@ export function Overview() {
 
         <div className="grid grid-cols-2 gap-4">
           {/* New Appointment */}
-          <button className="bg-red-500 hover:bg-red-600 transition-colors rounded-xl px-5 py-4 flex items-center gap-4 text-left">
+          
+          <button
+            type="button"
+            onClick={onBookAppointment}
+            className="bg-red-500 hover:bg-red-600 transition-colors rounded-xl px-5 py-4 flex items-center gap-4 text-left"
+          >
             <div className="bg-red-400 rounded-lg p-2">
               <CalendarPlus className="text-white w-5 h-5" strokeWidth={2} />
             </div>
@@ -88,7 +79,11 @@ export function Overview() {
           </button>
 
           {/* Profile Settings */}
-          <button className="bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl px-5 py-4 flex items-center gap-4 text-left">
+          <button
+            type="button"
+            onClick={onProfileSettings}
+            className="bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl px-5 py-4 flex items-center gap-4 text-left"
+          >
             <div className="bg-slate-600 rounded-lg p-2">
               <Settings className="text-white w-5 h-5" strokeWidth={2} />
             </div>

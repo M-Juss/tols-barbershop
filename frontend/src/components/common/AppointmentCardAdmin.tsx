@@ -1,7 +1,7 @@
 import { CalendarDays } from "lucide-react";
 
 export type AppointmentStatus =
-  | "Upcoming"
+  | "Approved"
   | "Pending"
   | "Completed"
   | "Rejected";
@@ -13,12 +13,12 @@ interface AppointmentCardProps {
   status: AppointmentStatus;
   date: string;
   time: string;
-  client: string;
+  customer: string;
   className?: string;
 }
 
 const statusBadge: Record<AppointmentStatus, string> = {
-  Upcoming: "bg-blue-100 text-blue-500",
+  Approved: "bg-blue-100 text-blue-500",
   Pending: "bg-yellow-100 text-yellow-600",
   Completed: "bg-green-100 text-green-600",
   Rejected: "bg-red-100 text-red-500",
@@ -31,7 +31,7 @@ export function AppointmentCard({
   status,
   date,
   time,
-  client,
+  customer,
   className = "",
 }: AppointmentCardProps) {
   return (
@@ -46,7 +46,7 @@ export function AppointmentCard({
           <div>
             <p className="font-bold text-gray-900 text-base">{service}</p>
             <p className="text-gray-500 text-sm">Barber: {barber}</p>
-            <p className="text-gray-500 text-sm">Client: {client}</p>
+            <p className="text-gray-500 text-sm">Customer: {customer}</p>
             <p className="text-gray-500 text-sm">
               Date & time: {date} at {time}
             </p>

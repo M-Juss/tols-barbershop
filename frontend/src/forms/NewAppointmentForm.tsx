@@ -1,18 +1,15 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
-
 import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
 import { InputWithLabel } from "@/components/common/InputWithLabel";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
 
-type NewAppointmentFormProps = {
-  onBack: () => void;
-};
-
 const serviceOptions = [
   { value: "classic-haircut", label: "Classic Haircut" },
-  { value: "premium-haircut-beard-trim", label: "Premium Haircut + Beard Trim" },
+  {
+    value: "premium-haircut-beard-trim",
+    label: "Premium Haircut + Beard Trim",
+  },
   { value: "beard-styling", label: "Beard Styling" },
   { value: "hair-color-treatment", label: "Hair Color + Treatment" },
 ];
@@ -32,23 +29,10 @@ const timeOptions = [
   { value: "03:30-pm", label: "3:30 PM" },
 ];
 
-export function NewAppointmentForm({ onBack }: NewAppointmentFormProps) {
+export function NewAppointmentForm() {
   return (
-    <div className="w-full h-full bg-slate-100 p-6 font-sans">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-gray-700 font-medium text-sm mb-6 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" strokeWidth={2} />
-        Back to Appointments
-      </button>
-
+    <div className="w-full h-full bg-slate-100 font-sans">
       <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h2 className="text-base font-bold text-gray-900">New Appointment</h2>
-        <p className="text-gray-500 text-sm mt-0.5 mb-6">
-          Fill in the details to book your appointment
-        </p>
-
         <form className="grid grid-cols-2 gap-x-6 gap-y-5">
           <div className="col-span-2">
             <InputWithLabel
@@ -91,7 +75,11 @@ export function NewAppointmentForm({ onBack }: NewAppointmentFormProps) {
             options={barberOptions}
           />
 
-          <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" />
+          <DatePickerWithLabel
+            id="date"
+            label="Date"
+            placeholder="Pick a date"
+          />
 
           <SelectWithLabel
             id="time"
@@ -99,25 +87,28 @@ export function NewAppointmentForm({ onBack }: NewAppointmentFormProps) {
             placeholder="Select time"
             options={timeOptions}
           />
+
+          <div className="col-span-2">
+            <label
+              htmlFor="notes"
+              className="mb-1.5 block text-sm font-medium text-gray-700"
+            >
+              Notes
+            </label>
+            <textarea
+              id="notes"
+              placeholder="Add notes for your barber (optional)"
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+            />
+          </div>
         </form>
 
         <div className="flex items-center gap-3 mt-8">
           <button className="flex-1 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-xl py-3 text-sm">
             Book Appointment
           </button>
-          <button
-            onClick={onBack}
-            className="border border-gray-200 rounded-xl px-6 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
         </div>
-      </div>
-
-      <div className="flex justify-end mt-4">
-        <button className="bg-gray-700 hover:bg-gray-600 transition-colors text-white rounded-full w-9 h-9 flex items-center justify-center text-base font-bold shadow-md">
-          ?
-        </button>
       </div>
     </div>
   );
