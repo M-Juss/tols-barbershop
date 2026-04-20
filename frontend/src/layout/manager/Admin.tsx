@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Mail, Phone, Pencil, Plus, Trash2, X, User, Lock, Shield, ChevronDown } from "lucide-react";
+import { ChangePasswordForm } from "@/components/common/ChangePasswordForm";
 
 type Role = "Super Admin" | "Manager";
 
@@ -44,6 +45,8 @@ const emptyForm = { name: "", email: "", phone: "", image: "", role: "Manager" a
 export function Admin() {
   const [admins, setAdmins] = useState<Admin[]>(initialAdmins);
   const [showModal, setShowModal] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [selectedAdmin, setSelectedAdmin] = useState<Admin | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   const openModal = () => {
@@ -64,6 +67,16 @@ export function Admin() {
 
   const handleDelete = (id: number) => {
     setAdmins((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const openChangePasswordModal = (admin: Admin) => {
+    setSelectedAdmin(admin);
+    setShowChangePassword(true);
+  };
+
+  const closeChangePasswordModal = () => {
+    setShowChangePassword(false);
+    setSelectedAdmin(null);
   };
 
   return (
@@ -132,7 +145,10 @@ export function Admin() {
                   <Trash2 className="w-5 h-5" strokeWidth={2} />
                 </button>
               </div>
-              <button className="w-full flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => openChangePasswordModal(admin)}
+                className="w-full flex items-center justify-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors"
+              >
                 <Lock className="w-4 h-4" strokeWidth={2} />
                 Change Password
               </button>
@@ -241,6 +257,13 @@ export function Admin() {
           </div>
         </div>
       )}
+
+      <ChangePasswordForm
+        open={showChangePassword}
+        onClose={closeChangePasswordModal}
+        title={selectedAdmin ? `Change Password for ${selectedAdmin.name}` : "Change Password"}
+        subtitle="Set a temporary password and share it securely with the admin user."
+      />
     </div>
   );
 }

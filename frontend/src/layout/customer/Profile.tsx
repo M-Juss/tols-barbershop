@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Lock, Trash2 } from "lucide-react";
 
+import { ChangePasswordForm } from "@/components/common/ChangePasswordForm";
 import { AccountInformationForm } from "@/forms/AccountInformationForm";
 
 export function Profile() {
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
   return (
     <div className="w-full h-full bg-slate-100 p-6 font-sans">
       {/* Header */}
@@ -38,7 +42,10 @@ export function Profile() {
             <p className="text-sm font-bold text-gray-900">Password</p>
             <p className="text-gray-500 text-sm mt-0.5">Update your password to keep your account secure</p>
           </div>
-          <button className="flex items-center gap-2 border border-gray-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors whitespace-nowrap">
+          <button
+            onClick={() => setShowChangePassword(true)}
+            className="flex items-center gap-2 border border-gray-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors whitespace-nowrap"
+          >
             <Lock className="w-4 h-4" strokeWidth={2} />
             Change Password
           </button>
@@ -57,6 +64,10 @@ export function Profile() {
         </div>
       </div>
 
+      <ChangePasswordForm
+        open={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 }
