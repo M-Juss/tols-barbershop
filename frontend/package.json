@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "22.x"
+    "node": ">=24 <25",
+    "npm": ">=11"
   },
   "overrides": {
     "postcss": "8.5.18",
