@@ -1,5 +1,6 @@
 "use client";
 import { InputWithLabel } from "@/components/common/InputWithLabel";
+import { PasswordInputWithLabel } from "@/components/common/PasswordInputWithLabel";
 import { SelectWithLabel } from "@/components/common/SelectWithLabel";
 import { SubmitErrorHandler, useForm, useWatch, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -185,13 +186,12 @@ export function AdminForm({
           ) : null}
 
           <div className="relative ">
-            <InputWithLabel
+            <PasswordInputWithLabel
               id="password"
               label={isEditMode ? "Change Password" : "Password"}
               placeholder={
                 isEditMode ? "Enter new password (optional)" : "Enter password"
               }
-              type="password"
               className="border-gray-300 focus:border-gray-400 h-10"
               {...formRegister("password")}
             />
@@ -203,13 +203,12 @@ export function AdminForm({
           </div>
 
           <div className="relative ">
-            <InputWithLabel
+            <PasswordInputWithLabel
               id="confirm_password"
               label={
                 isEditMode ? "Confirm New Password" : "Confirm Password"
               }
               placeholder="Confirm password"
-              type="password"
               className="border-gray-300 focus:border-gray-400 h-10"
               {...formRegister("confirm_password")}
             />
