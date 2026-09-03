@@ -3,6 +3,7 @@
 use App\Models\Appointment;
 use App\Models\AppointmentAddOn;
 use App\Models\BookingCustomer;
+use App\Models\BookingEmailDelivery;
 use App\Models\Service;
 use App\Models\ServiceAddOn;
 use App\Models\User;
@@ -72,12 +73,15 @@ test('staff can manage add-ons and apply them to confirmed appointments', functi
         ->assertJsonPath('data.add_ons.0.name', 'Beard Trim');
 
     expect($appointment->refresh()->price)->toBe('350.00')
-        ->and(AppointmentAddOn::query()->where('appointment_id', $appointment->id)->count())->toBe(1);
+        ->and(AppointmentAddOn::query()->where('appointment_id', $appointment->id)->count())->toBe(1)
+        ->and(BookingEmailDelivery::query()->where('appointment_id', $appointment->id)->count())->toBe(0);
 
     $line = AppointmentAddOn::query()->where('appointment_id', $appointment->id)->firstOrFail();
     $this->deleteJson("/api/v1/appointments/{$appointment->id}/add-ons/{$line->id}")
         ->assertOk()
         ->assertJsonPath('data.price', '300.00');
+
+    expect(BookingEmailDelivery::query()->where('appointment_id', $appointment->id)->count())->toBe(0);
 
     $appointment->update(['status' => 'completed']);
     $this->postJson("/api/v1/appointments/{$appointment->id}/add-ons", [

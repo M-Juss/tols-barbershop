@@ -65,31 +65,6 @@ class AppointmentNotificationService
         );
     }
 
-    public function notifyAddOnsUpdated(
-        Appointment $appointment,
-        ?int $createdByUserId = null,
-    ): ?BookingEmailDelivery {
-        $appointment->loadMissing(['bookingCustomer', 'barber', 'service', 'addOns']);
-        if (! $appointment->bookingCustomer) {
-            return null;
-        }
-
-        return $this->emailService->createAndSend(
-            $appointment,
-            'add_on_updated',
-            [
-                'subject' => 'Your TOL Barbershop booking was updated',
-                'heading' => 'Booking Updated',
-                'customerName' => $appointment->bookingCustomer->fullname,
-                'intro' => 'An add-on was added or removed from your confirmed booking.',
-                'highlight' => DisplayId::booking($appointment->id),
-                'details' => $this->details($appointment),
-                'footer' => 'Please use this updated total when you arrive for your appointment.',
-            ],
-            $createdByUserId,
-        );
-    }
-
     public function notifyGroupStatus(
         Collection $appointments,
         string $status,

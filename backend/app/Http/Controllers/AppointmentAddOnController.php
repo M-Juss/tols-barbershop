@@ -7,19 +7,13 @@ use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use App\Models\AppointmentAddOn;
 use App\Models\ServiceAddOn;
-use App\Services\AppointmentNotificationService;
 use App\Support\EntityChange;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AppointmentAddOnController extends Controller
 {
-    public function __construct(
-        private readonly AppointmentNotificationService $appointmentNotificationService,
-    ) {}
-
     public function store(AppointmentAddOnRequest $request, string $appointmentId)
     {
         $validated = $request->validated();
@@ -81,17 +75,11 @@ class AppointmentAddOnController extends Controller
         ]);
 
         EntityChange::dispatch('appointments');
-        if ($this->appointmentNotificationService->notifyAddOnsUpdated(
-            $appointment,
-            $request->user()?->id,
-        )) {
-            EntityChange::dispatch('notifications');
-        }
 
         return new AppointmentResource($appointment);
     }
 
-    public function destroy(Request $request, string $appointmentId, string $addOnId)
+    public function destroy(string $appointmentId, string $addOnId)
     {
         $appointment = DB::transaction(function () use ($appointmentId, $addOnId): Appointment {
             $appointment = Appointment::whereKey($appointmentId)
@@ -129,12 +117,6 @@ class AppointmentAddOnController extends Controller
         ]);
 
         EntityChange::dispatch('appointments');
-        if ($this->appointmentNotificationService->notifyAddOnsUpdated(
-            $appointment,
-            $request->user()?->id,
-        )) {
-            EntityChange::dispatch('notifications');
-        }
 
         return new AppointmentResource($appointment);
     }
