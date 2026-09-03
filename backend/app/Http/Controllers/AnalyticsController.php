@@ -87,15 +87,16 @@ class AnalyticsController extends Controller
             ->count();
 
         $walkin = Appointment::withTrashed()->where('is_walkin', true)
-            ->whereIn('status', ['completed', 'approved', 'cancelled', 'no_show'])
+            ->whereIn('status', ['completed', 'confirmed', 'cancelled', 'no_show'])
             ->where('appointment_date', '>=', $range['from'])
             ->where('appointment_date', '<', $range['end_exclusive'])
             ->count();
 
         $totalCustomers = Appointment::withTrashed()->where('appointment_date', '>=', $range['from'])
             ->where('appointment_date', '<', $range['end_exclusive'])
-            ->distinct('user_id')
-            ->count('user_id');
+            ->whereNotNull('booking_customer_id')
+            ->distinct('booking_customer_id')
+            ->count('booking_customer_id');
 
         $avgRating = DB::table('appointment_feedback')
             ->join('appointments', 'appointments.id', '=', 'appointment_feedback.appointment_id')
@@ -250,7 +251,7 @@ class AnalyticsController extends Controller
 
         $rows = DB::table('appointments')
             ->selectRaw('SUBSTR(appointment_time, 1, 5) as hour, COUNT(*) as count')
-            ->whereIn('status', ['completed', 'approved'])
+            ->whereIn('status', ['completed', 'confirmed'])
             ->where('appointment_date', '>=', $range['from'])
             ->where('appointment_date', '<', $range['end_exclusive'])
             ->groupBy('hour')

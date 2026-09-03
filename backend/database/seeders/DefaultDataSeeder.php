@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Appointment;
 use App\Models\AppointmentFeedback;
+use App\Models\BookingCustomer;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
@@ -103,14 +104,11 @@ class DefaultDataSeeder extends Seeder
         }
 
         foreach ($this->customersData as $customer) {
-            User::firstOrCreate(
+            BookingCustomer::firstOrCreate(
                 ['email' => $customer['email']],
                 [
                     'fullname' => $customer['fullname'],
                     'contact_number' => $customer['contact_number'],
-                    'password' => Hash::make('Customer123!'),
-                    'role' => 'customer',
-                    'is_active' => true,
                 ]
             );
         }
@@ -145,7 +143,7 @@ class DefaultDataSeeder extends Seeder
         $barber = $this->pickRandom($entities['barbers']);
 
         $data = [
-            'user_id' => $isWalkin ? null : $customer->id,
+            'booking_customer_id' => $isWalkin ? null : $customer->id,
             'service_id' => $service->id,
             'barber_user_id' => $barber->id,
             'appointment_date' => $date->toDateString(),
@@ -158,6 +156,8 @@ class DefaultDataSeeder extends Seeder
             'walkin_customer_contact_number' => $isWalkin ? $customer->contact_number : null,
             'notes' => $isWalkin ? 'Walk-in customer' : null,
             'customer_name_snapshot' => $customer->fullname,
+            'customer_email_snapshot' => $isWalkin ? null : $customer->email,
+            'customer_contact_number_snapshot' => $customer->contact_number,
             'service_name_snapshot' => $service->name,
             'barber_name_snapshot' => $barber->fullname,
         ];
@@ -166,7 +166,7 @@ class DefaultDataSeeder extends Seeder
             $bookedAt = $date->copy()->subDays(random_int(1, 14));
             $data['created_at'] = $bookedAt;
             $data['updated_at'] = $bookedAt;
-            $data['approved_at'] = $date->copy()->subHours(random_int(1, 48));
+            $data['confirmed_at'] = $date->copy()->subHours(random_int(1, 48));
             $data['completed_at'] = $date->copy()->addHours(random_int(1, 4));
         } elseif ($status === 'cancelled') {
             $bookedAt = $date->copy()->subDays(random_int(1, 7));
@@ -177,11 +177,11 @@ class DefaultDataSeeder extends Seeder
             $bookedAt = $date->copy()->subDays(random_int(1, 7));
             $data['created_at'] = $bookedAt;
             $data['updated_at'] = $bookedAt;
-            $data['approved_at'] = $date->copy()->subHours(random_int(1, 48));
-        } elseif ($status === 'approved') {
+            $data['confirmed_at'] = $date->copy()->subHours(random_int(1, 48));
+        } elseif ($status === 'confirmed') {
             $data['created_at'] = $date->copy()->subDays(random_int(1, 5));
             $data['updated_at'] = $date->copy()->subDays(random_int(1, 5));
-            $data['approved_at'] = $date->copy()->subDays(random_int(1, 3));
+            $data['confirmed_at'] = $date->copy()->subDays(random_int(1, 3));
         } elseif ($status === 'pending') {
             $data['created_at'] = $date->copy()->subDays(random_int(0, 3));
             $data['updated_at'] = $date->copy()->subDays(random_int(0, 3));
@@ -192,7 +192,7 @@ class DefaultDataSeeder extends Seeder
 
     private function seedFeedback(Appointment $appointment, Carbon $date, int $rating): void
     {
-        if (! $appointment->user_id) {
+        if (! $appointment->booking_customer_id) {
             return;
         }
 
@@ -201,12 +201,12 @@ class DefaultDataSeeder extends Seeder
 
         AppointmentFeedback::create([
             'appointment_id' => $appointment->id,
-            'user_id' => $appointment->user_id,
+            'booking_customer_id' => $appointment->booking_customer_id,
             'rating' => $rating,
             'comment' => $this->pickRandom($comments),
             'created_at' => $feedbackDate,
             'updated_at' => $feedbackDate,
-            'customer_name_snapshot' => User::find($appointment->user_id)?->fullname,
+            'customer_name_snapshot' => BookingCustomer::find($appointment->booking_customer_id)?->fullname,
         ]);
     }
 
@@ -225,7 +225,7 @@ class DefaultDataSeeder extends Seeder
     {
         $entities = [
             'barbers' => User::where('role', 'barber')->get(),
-            'customers' => User::where('role', 'customer')->get(),
+            'customers' => BookingCustomer::all(),
             'services' => Service::all(),
         ];
 
@@ -307,17 +307,17 @@ class DefaultDataSeeder extends Seeder
             $this->createAppointment($date, 'pending', $entities);
         }
 
-        // 7 approved appointments (future dates, spread out)
-        $approvedDates = [];
+        // 7 confirmed appointments (future dates, spread out)
+        $confirmedDates = [];
         $checkDate = $now->copy()->addDay();
-        while (count($approvedDates) < 7) {
+        while (count($confirmedDates) < 7) {
             if (! $checkDate->isSunday()) {
-                $approvedDates[] = $checkDate->copy();
+                $confirmedDates[] = $checkDate->copy();
             }
             $checkDate->addDay();
         }
-        foreach ($approvedDates as $date) {
-            $appt = $this->createAppointment($date, 'approved', $entities);
+        foreach ($confirmedDates as $date) {
+            $appt = $this->createAppointment($date, 'confirmed', $entities);
         }
 
         // 3 past due appointments (past dates, status: no_show or cancelled)

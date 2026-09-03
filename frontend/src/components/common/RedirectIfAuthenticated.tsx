@@ -7,7 +7,6 @@ import { type ReactNode, useEffect } from "react";
 const roleBasePath: Record<string, string> = {
   admin: "/admin",
   manager: "/manager",
-  customer: "/customer",
 };
 
 export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {

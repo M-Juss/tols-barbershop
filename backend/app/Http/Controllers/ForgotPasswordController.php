@@ -22,9 +22,15 @@ class ForgotPasswordController extends Controller
     public function sendResetLink(ForgotPasswordRequest $request)
     {
         try {
-            Password::sendResetLink([
-                'email' => $request->validated('email'),
-            ]);
+            $email = $request->validated('email');
+            $staffExists = User::query()
+                ->where('email', $email)
+                ->whereIn('role', ['admin', 'manager'])
+                ->exists();
+
+            if ($staffExists) {
+                Password::sendResetLink(['email' => $email]);
+            }
         } catch (Throwable $exception) {
             report($exception);
         }
@@ -35,6 +41,10 @@ class ForgotPasswordController extends Controller
     public function resetPassword(ResetPasswordRequest $request)
     {
         $validated = $request->validated();
+
+        if (! User::query()->where('email', $validated['email'])->whereIn('role', ['admin', 'manager'])->exists()) {
+            return $this->error('Invalid or expired reset token.', [], 422);
+        }
 
         $status = DB::transaction(function () use ($validated): string {
             $token = DB::table((string) config('auth.passwords.users.table'))
@@ -89,7 +99,7 @@ class ForgotPasswordController extends Controller
                 ->where('email', $validated['email'])
                 ->exists();
 
-            if (! $user || ! $tokenExists) {
+            if (! $user || ! in_array($user->role, ['admin', 'manager'], true) || ! $tokenExists) {
                 Hash::check(
                     $validated['token'],
                     '$2y$12$usesomesillystringfore7hnbRJHxXVLeakoG8K30oukPsA.ztMG',

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\AppointmentFeedbackRequest;
 use App\Http\Requests\FeedbackListRequest;
+use App\Http\Requests\PublicFeedbackRequest;
 use App\Http\Resources\AppointmentFeedbackResource;
 use App\Models\Appointment;
 use App\Models\AppointmentFeedback;
+use App\Models\FeedbackToken;
+use App\Support\DisplayId;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
@@ -16,60 +18,79 @@ class AppointmentFeedbackController extends Controller
 {
     use ApiResponseTrait;
 
-    public function store(AppointmentFeedbackRequest $request)
+    public function publicStatus(Request $request)
     {
-        $authUser = $request->user();
+        $validated = $request->validate([
+            'token' => ['required', 'string', 'size:64'],
+        ]);
+
+        $token = FeedbackToken::query()
+            ->where('token_hash', hash('sha256', $validated['token']))
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->with(['appointment.service', 'appointment.barber'])
+            ->first();
+
+        if (! $token) {
+            return $this->error('This rating link is invalid, expired, or already used.', [], 422);
+        }
+
+        $appointment = $token->appointment
+            ?? Appointment::query()->where('batch_id', $token->batch_id)->with(['service', 'barber'])->oldest('id')->first();
+
+        return $this->success('Rating link is valid.', [
+            'reference' => $token->batch_id
+                ? DisplayId::group($appointment?->id)
+                : DisplayId::booking($appointment?->id),
+            'barber_name' => $appointment?->barber?->fullname,
+            'service_name' => $token->batch_id ? 'Group booking' : $appointment?->service?->name,
+        ]);
+    }
+
+    public function publicStore(PublicFeedbackRequest $request)
+    {
         $validated = $request->validated();
 
-        $comment = $validated['comment'] ?? null;
-        $result = DB::transaction(function () use ($validated, $authUser, $comment): array {
-            $appointment = Appointment::with(['service', 'user'])
-                ->where('id', $validated['appointment_id'])
-                ->where('user_id', $authUser->id)
+        $result = DB::transaction(function () use ($validated): array {
+            $token = FeedbackToken::query()
+                ->where('token_hash', hash('sha256', $validated['token']))
                 ->lockForUpdate()
                 ->first();
 
-            if (! $appointment) {
-                return ['error' => 'Appointment not found.', 'status' => 404];
+            if (! $token || $token->used_at || $token->expires_at->isPast()) {
+                return ['error' => 'This rating link is invalid, expired, or already used.'];
             }
 
-            if ($appointment->status !== 'completed') {
-                return [
-                    'error' => 'Feedback can only be submitted for completed appointments.',
-                    'status' => 422,
-                ];
+            $appointment = $token->appointment()->first()
+                ?? Appointment::query()->where('batch_id', $token->batch_id)->oldest('id')->first();
+            if (! $appointment || $appointment->status !== 'completed') {
+                return ['error' => 'Feedback can only be submitted for a completed booking.'];
             }
 
-            $feedback = AppointmentFeedback::updateOrCreate(
-                ['appointment_id' => $appointment->id],
-                [
-                    'user_id' => $authUser->id,
-                    'rating' => $validated['rating'],
-                    'comment' => is_string($comment) && trim($comment) !== ''
-                        ? trim($comment)
-                        : null,
-                    'is_featured' => false,
-                    'customer_name_snapshot' => $authUser->fullname,
-                ],
-            );
+            $customer = $token->bookingCustomer()->firstOrFail();
+            $feedback = AppointmentFeedback::create([
+                'appointment_id' => $appointment->id,
+                'batch_id' => $token->batch_id,
+                'booking_customer_id' => $customer->id,
+                'rating' => $validated['rating'],
+                'comment' => filled($validated['comment'] ?? null) ? trim($validated['comment']) : null,
+                'is_featured' => false,
+                'customer_name_snapshot' => $customer->fullname,
+            ]);
+
+            $token->forceFill(['used_at' => now()])->save();
 
             return ['feedback' => $feedback];
         }, 3);
 
         if (isset($result['error'])) {
-            return $this->error($result['error'], [], $result['status']);
+            return $this->error($result['error'], [], 422);
         }
 
-        /** @var AppointmentFeedback $feedback */
-        $feedback = $result['feedback'];
-
-        $feedback->load(['user', 'appointment.service', 'appointment.barber']);
+        $result['feedback']->load(['bookingCustomer', 'appointment.service', 'appointment.barber']);
         EntityChange::dispatch('feedback');
 
-        return $this->success(
-            'Feedback submitted successfully.',
-            new AppointmentFeedbackResource($feedback),
-        );
+        return $this->created('Thank you for your feedback.', new AppointmentFeedbackResource($result['feedback']));
     }
 
     public function toggleFeature(Request $request, $id)
@@ -114,7 +135,7 @@ class AppointmentFeedbackController extends Controller
         /** @var AppointmentFeedback $feedback */
         $feedback = $result['feedback'];
 
-        $feedback->load(['user', 'appointment.service', 'appointment.barber']);
+        $feedback->load(['bookingCustomer', 'appointment.service', 'appointment.barber']);
         EntityChange::dispatch('feedback');
 
         return $this->success($result['message'], new AppointmentFeedbackResource($feedback));
@@ -122,7 +143,7 @@ class AppointmentFeedbackController extends Controller
 
     public function publicIndex(Request $request)
     {
-        $feedback = AppointmentFeedback::with(['user:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
+        $feedback = AppointmentFeedback::with(['bookingCustomer:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
             ->where('rating', 5)
             ->whereNotNull('comment')
             ->where('comment', '<>', '')
@@ -139,7 +160,7 @@ class AppointmentFeedbackController extends Controller
 
     public function featuredIndex(Request $request)
     {
-        $feedback = AppointmentFeedback::with(['user:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
+        $feedback = AppointmentFeedback::with(['bookingCustomer:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
             ->where('is_featured', true)
             ->latest()
             ->limit(5)
@@ -152,36 +173,17 @@ class AppointmentFeedbackController extends Controller
         ]);
     }
 
-    public function pendingFeedback(Request $request)
-    {
-        $authUser = $request->user();
-
-        $appointments = Appointment::where('user_id', $authUser->id)
-            ->where('status', 'completed')
-            ->whereDoesntHave('feedback')
-            ->with(['service:id,name', 'barber:id,fullname'])
-            ->get();
-
-        return $this->success('Pending feedback retrieved.', [
-            'appointments' => $appointments->map(fn ($a) => [
-                'appointment_id' => $a->id,
-                'service_name' => $a->service?->name,
-                'barber_name' => $a->barber?->fullname,
-            ]),
-        ]);
-    }
-
     public function index(FeedbackListRequest $request)
     {
         $validated = $request->validated();
 
-        $query = AppointmentFeedback::with(['user:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname']);
+        $query = AppointmentFeedback::with(['bookingCustomer:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname']);
 
         if (! empty($validated['search'])) {
             $search = $validated['search'];
             $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
             $query->where(function ($q) use ($like) {
-                $q->whereHas('user', fn ($uq) => $uq->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
+                $q->whereHas('bookingCustomer', fn ($uq) => $uq->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereHas('appointment.barber', fn ($bq) => $bq->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereHas('appointment.service', fn ($sq) => $sq->whereRaw("name LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereRaw("comment LIKE ? ESCAPE '!'", [$like]);

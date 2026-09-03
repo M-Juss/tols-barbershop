@@ -23,7 +23,7 @@ class BatchAppointmentStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::in(['approved', 'rejected'])],
+            'status' => ['required', Rule::in(['confirmed', 'rejected'])],
             'cancellation_reason' => ['required_if:status,rejected', 'nullable', 'string', 'max:500'],
         ];
     }

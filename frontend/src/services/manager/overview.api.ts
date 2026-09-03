@@ -1,10 +1,10 @@
 import { authFetch } from "@/lib/api";
-import type { AppointmentStatus } from "@/services/customer/appointment.api";
+import type { AppointmentStatus } from "@/services/shared/appointment.api";
 
 export type OverviewStats = {
   completed_appointments: number;
   pending_appointments: number;
-  approved_appointments: number;
+  confirmed_appointments: number;
   total_customers: number;
   total_revenue: number;
 };
@@ -59,7 +59,7 @@ export type WeeklyAvailabilityDay = {
 export type WeeklyDashboardStats = {
   completed_appointments: number;
   pending_appointments: number;
-  approved_appointments: number;
+  confirmed_appointments: number;
   average_rating: number;
 };
 

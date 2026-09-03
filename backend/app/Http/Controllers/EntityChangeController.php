@@ -14,7 +14,6 @@ class EntityChangeController extends Controller
     {
         $entityTypes = [
             'appointments',
-            'support_tickets',
             'notifications',
             'closed_dates',
             'barbers',

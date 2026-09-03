@@ -1,7 +1,6 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
 import { type SubmitErrorHandler, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -18,7 +17,6 @@ import {
 } from "@/validations/auth.validation";
 
 export function LoginForm() {
-  const router = useRouter();
   const { login } = useAuth();
   const rateLimit = useRateLimit({
     maxAttempts: 20,
@@ -54,15 +52,6 @@ export function LoginForm() {
         toast.error("Login failed");
       }
     } catch (error) {
-      if (error instanceof ApiError && error.code === "EMAIL_UNVERIFIED") {
-        rateLimit.reset();
-        router.push(
-          `/verify-email?email=${encodeURIComponent(normalizeEmail(data.email))}`,
-        );
-        toast.info("Verify your email before logging in.");
-        return;
-      }
-
       toast.error(error instanceof ApiError ? error.message : "Login failed. Please try again.");
     }
   };
@@ -110,15 +99,6 @@ export function LoginForm() {
           </p>
         )}
       </div>
-      <div className="flex justify-end -mt-1 mb-1">
-        <a
-          href="/forgot-password"
-          className="text-xs text-accent hover:underline"
-        >
-          Forgot Password?
-        </a>
-      </div>
-
       <Button
         type="submit"
         disabled={isSubmitting || !rateLimit.canAttempt}

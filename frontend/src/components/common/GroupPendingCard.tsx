@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatTime12 } from "@/lib/time-slots";
 
-import type { Appointment } from "@/services/customer/appointment.api";
+import type { Appointment } from "@/services/shared/appointment.api";
 
 function formatShortDate(date: string): string {
   return new Date(date).toLocaleDateString("en-US", {
@@ -117,7 +117,7 @@ export function GroupPendingCard({
         <Button
           onClick={() => onApproveAll(appointments)}
           disabled={disabled || overdue}
-          title={overdue ? "Cannot approve an overdue booking" : undefined}
+          title={overdue ? "Cannot confirm an overdue booking" : undefined}
           className={cn(
             "gap-1.5 text-sm h-9",
             overdue
@@ -125,7 +125,7 @@ export function GroupPendingCard({
               : "bg-green-600 hover:bg-green-700 text-white",
           )}
         >
-          {appointments.length > 1 ? "Approve All" : "Approve"}
+          {appointments.length > 1 ? "Confirm All" : "Confirm"}
         </Button>
         <Button
           onClick={() => onRejectAll(appointments)}

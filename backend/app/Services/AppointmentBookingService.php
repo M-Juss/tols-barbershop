@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\ClosedDates;
 use App\Models\Service;
 use App\Models\User;
@@ -13,15 +14,17 @@ use Throwable;
 
 class AppointmentBookingService
 {
-    public const ACTIVE_STATUSES = ['pending', 'approved'];
+    public const ACTIVE_STATUSES = ['pending', 'confirmed'];
+
+    public const HISTORY_STATUSES = ['completed', 'cancelled', 'rejected', 'no_show'];
 
     public const MAX_PENDING_APPOINTMENTS_PER_CUSTOMER = 11;
 
     public const MAX_BOOKING_DAYS_AHEAD = 7;
 
     private const STATUS_TRANSITIONS = [
-        'pending' => ['approved', 'cancelled', 'rejected'],
-        'approved' => ['completed', 'cancelled', 'no_show'],
+        'pending' => ['confirmed', 'cancelled', 'rejected'],
+        'confirmed' => ['completed', 'cancelled', 'no_show'],
         'completed' => [],
         'cancelled' => [],
         'no_show' => [],
@@ -31,7 +34,7 @@ class AppointmentBookingService
     /**
      * @param  array<int, array{service_id: int, appointment_time: string}>  $slots
      * @param  array<int, int>  $ignoreAppointmentIds
-     * @return array{barber: User, customer: User|null, services: Collection<int, Service>}
+     * @return array{barber: User, customer: BookingCustomer|null, services: Collection<int, Service>}
      */
     public function validateAndLock(
         ?int $customerId,
@@ -68,8 +71,8 @@ class AppointmentBookingService
             $parsedSlots->pluck('service_id')->all(),
         );
 
-        if ($pendingAppointmentsToAdd > 0 && $resources['customer']?->role === 'customer') {
-            $pendingCount = Appointment::where('user_id', $customerId)
+        if ($pendingAppointmentsToAdd > 0 && $resources['customer']) {
+            $pendingCount = Appointment::where('booking_customer_id', $customerId)
                 ->where('status', 'pending')
                 ->count();
 
@@ -136,11 +139,11 @@ class AppointmentBookingService
 
     /**
      * @param  array<int, int>  $serviceIds
-     * @return array{barber: User, customer: User|null, services: Collection<int, Service>}
+     * @return array{barber: User, customer: BookingCustomer|null, services: Collection<int, Service>}
      */
     public function lockActiveResources(?int $customerId, int $barberUserId, array $serviceIds): array
     {
-        $users = $this->lockUsers(array_filter([$customerId, $barberUserId]));
+        $users = $this->lockUsers([$barberUserId]);
         $barber = $users->get($barberUserId);
 
         if (! $barber || $barber->role !== 'barber' || ! (bool) $barber->is_active) {
@@ -149,10 +152,12 @@ class AppointmentBookingService
             ]);
         }
 
-        $customer = $customerId ? $users->get($customerId) : null;
-        if ($customerId && (! $customer || $customer->role !== 'customer' || ! (bool) $customer->is_active)) {
+        $customer = $customerId
+            ? BookingCustomer::query()->whereKey($customerId)->lockForUpdate()->first()
+            : null;
+        if ($customerId && ! $customer) {
             throw ValidationException::withMessages([
-                'user_id' => 'The selected customer is not available.',
+                'booking_customer_id' => 'The selected customer is not available.',
             ]);
         }
 

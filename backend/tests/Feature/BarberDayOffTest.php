@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\ClosedDateActivity;
 use App\Models\ClosedDates;
-use App\Models\Notification;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
@@ -39,8 +39,17 @@ function barberDayOffService(): Service
     ]);
 }
 
+function barberDayOffCustomer(): BookingCustomer
+{
+    return BookingCustomer::create([
+        'fullname' => fake()->name(),
+        'email' => fake()->unique()->safeEmail(),
+        'contact_number' => '09'.fake()->numerify('#########'),
+    ]);
+}
+
 function barberDayOffAppointment(
-    User $customer,
+    BookingCustomer $customer,
     User $barber,
     Service $service,
     string $date,
@@ -48,7 +57,7 @@ function barberDayOffAppointment(
     string $status,
 ): Appointment {
     return Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => $date,
@@ -57,17 +66,17 @@ function barberDayOffAppointment(
         'price' => $service->price,
         'status' => $status,
         'active_slot_key' => "{$barber->id}|{$date}|{$time}",
-        'approved_at' => $status === 'approved' ? now() : null,
+        'confirmed_at' => $status === 'confirmed' ? now() : null,
     ]);
 }
 
-test('barber day off blocks pending and approved appointments then creates a private audit event and general notice', function () {
+test('barber day off blocks pending and confirmed appointments then creates a private audit event and general notice', function () {
     $manager = barberDayOffUser('manager');
     $barber = barberDayOffUser('barber');
-    $customer = barberDayOffUser('customer');
+    $customer = barberDayOffCustomer();
     $service = barberDayOffService();
     $pending = barberDayOffAppointment($customer, $barber, $service, '2026-07-28', '09:00', 'pending');
-    $approved = barberDayOffAppointment($customer, $barber, $service, '2026-07-28', '11:00', 'approved');
+    $confirmed = barberDayOffAppointment($customer, $barber, $service, '2026-07-28', '11:00', 'confirmed');
     Sanctum::actingAs($manager);
 
     $payload = [
@@ -85,15 +94,14 @@ test('barber day off blocks pending and approved appointments then creates a pri
         );
 
     expect(ClosedDates::count())->toBe(0)
-        ->and(ClosedDateActivity::count())->toBe(0)
-        ->and(Notification::where('type', 'closed_date')->count())->toBe(0);
+        ->and(ClosedDateActivity::count())->toBe(0);
 
     $pending->update([
         'status' => 'rejected',
         'active_slot_key' => null,
         'rejected_at' => now(),
     ]);
-    $approved->update([
+    $confirmed->update([
         'status' => 'cancelled',
         'active_slot_key' => null,
         'cancelled_at' => now(),
@@ -102,21 +110,14 @@ test('barber day off blocks pending and approved appointments then creates a pri
     $this->postJson('/api/v1/closed-dates', $payload)->assertCreated();
 
     $closure = ClosedDates::firstOrFail();
-    $notification = Notification::where('user_id', $customer->id)
-        ->where('type', 'closed_date')
-        ->firstOrFail();
     $activity = ClosedDateActivity::firstOrFail();
 
     expect($closure->closure_scope)->toBe('barber')
         ->and((int) $closure->barber_user_id)->toBe($barber->id)
         ->and($activity->action)->toBe('closed')
-        ->and($activity->reason)->toBe('Private medical appointment')
-        ->and($notification->message)->toContain("Barber {$barber->fullname} will not be working on July 28, 2026")
-        ->and($notification->message)->not->toContain('Private medical appointment')
-        ->and($notification->payload)->not->toHaveKey('reason');
+        ->and($activity->reason)->toBe('Private medical appointment');
 
-    Sanctum::actingAs($customer);
-    $this->getJson("/api/v1/closed-dates?scope=availability&barber_id={$barber->id}")
+    $this->getJson('/api/v1/public-booking/bootstrap')
         ->assertOk()
         ->assertJsonMissing(['reason' => 'Private medical appointment']);
 });
@@ -125,10 +126,10 @@ test('shop closure blocks active appointments for every barber', function () {
     $manager = barberDayOffUser('manager');
     $firstBarber = barberDayOffUser('barber');
     $secondBarber = barberDayOffUser('barber');
-    $customer = barberDayOffUser('customer');
+    $customer = barberDayOffCustomer();
     $service = barberDayOffService();
     $pending = barberDayOffAppointment($customer, $firstBarber, $service, '2026-07-28', '09:00', 'pending');
-    $approved = barberDayOffAppointment($customer, $secondBarber, $service, '2026-07-28', '11:00', 'approved');
+    $confirmed = barberDayOffAppointment($customer, $secondBarber, $service, '2026-07-28', '11:00', 'confirmed');
     Sanctum::actingAs($manager);
 
     $payload = [
@@ -145,20 +146,16 @@ test('shop closure blocks active appointments for every barber', function () {
         );
 
     $pending->update(['status' => 'rejected', 'active_slot_key' => null]);
-    $approved->update(['status' => 'cancelled', 'active_slot_key' => null]);
+    $confirmed->update(['status' => 'cancelled', 'active_slot_key' => null]);
 
     $this->postJson('/api/v1/closed-dates', $payload)->assertCreated();
 
-    expect(ClosedDates::firstOrFail()->closure_scope)->toBe('shop')
-        ->and(Notification::where('user_id', $customer->id)->firstOrFail()->message)
-        ->toBe('The shop will be closed on July 28, 2026. Please choose another available date.')
-        ->not->toContain('Private maintenance details');
+    expect(ClosedDates::firstOrFail()->closure_scope)->toBe('shop');
 });
 
 test('reopening creates a separate activity without another customer notice', function () {
     $manager = barberDayOffUser('manager');
     $barber = barberDayOffUser('barber');
-    $customer = barberDayOffUser('customer');
     Sanctum::actingAs($manager);
 
     $response = $this->postJson('/api/v1/closed-dates', [
@@ -168,16 +165,13 @@ test('reopening creates a separate activity without another customer notice', fu
         'reason' => 'Personal day',
     ])->assertCreated();
     $closedDateId = $response->json('data.id');
-    $noticeCount = Notification::where('user_id', $customer->id)->count();
-
     $this->putJson("/api/v1/closed-dates/{$closedDateId}", [
         'is_removed' => true,
     ])->assertOk();
 
     expect(ClosedDates::findOrFail($closedDateId)->is_removed)->toBeTruthy()
         ->and(ClosedDateActivity::where('closed_date_id', $closedDateId)->pluck('action')->all())
-        ->toBe(['closed', 'reopened'])
-        ->and(Notification::where('user_id', $customer->id)->count())->toBe($noticeCount);
+        ->toBe(['closed', 'reopened']);
 
     $this->getJson('/api/v1/closed-dates/activity')
         ->assertOk()
@@ -187,7 +181,7 @@ test('reopening creates a separate activity without another customer notice', fu
 
 test('barber day off blocks every booking path and reduces dashboard capacity', function () {
     $manager = barberDayOffUser('manager');
-    $customer = barberDayOffUser('customer');
+    $customer = barberDayOffCustomer();
     $closedBarber = barberDayOffUser('barber');
     $availableBarber = barberDayOffUser('barber');
     $service = barberDayOffService();
@@ -200,9 +194,9 @@ test('barber day off blocks every booking path and reduces dashboard capacity', 
         'reason' => 'Personal day',
     ]);
 
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($manager);
     $appointmentPayload = [
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $closedBarber->id,
         'appointment_date' => '2026-07-28',
@@ -214,19 +208,10 @@ test('barber day off blocks every booking path and reduces dashboard capacity', 
     $this->postJson('/api/v1/appointments', $appointmentPayload)
         ->assertUnprocessable()
         ->assertJsonValidationErrors('appointment_date');
-    $this->postJson('/api/v1/appointments/batch', [
-        'barber_user_id' => $closedBarber->id,
-        'appointment_date' => '2026-07-28',
-        'appointments' => [
-            ['service_id' => $service->id, 'appointment_time' => '09:00', 'price' => 300],
-            ['service_id' => $service->id, 'appointment_time' => '11:00', 'price' => 300],
-        ],
-    ])->assertUnprocessable()->assertJsonValidationErrors('appointment_date');
     $this->getJson(
         "/api/v1/appointments/available-slots?barber_id={$closedBarber->id}&date=2026-07-28",
     )->assertUnprocessable()->assertJsonValidationErrors('date');
 
-    Sanctum::actingAs($manager);
     ClosedDates::create([
         'date_closed' => '2026-07-27',
         'closure_scope' => 'barber',
@@ -257,9 +242,9 @@ test('barber day off blocks every booking path and reduces dashboard capacity', 
         $service,
         '2026-07-29',
         '09:00',
-        'approved',
+        'confirmed',
     );
-    $appointmentPayload['status'] = 'approved';
+    $appointmentPayload['status'] = 'confirmed';
     $this->putJson("/api/v1/appointments/{$rescheduled->id}", $appointmentPayload)
         ->assertUnprocessable()
         ->assertJsonValidationErrors('appointment_date');

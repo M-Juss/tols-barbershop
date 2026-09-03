@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\ClosedDates;
 use App\Models\Service;
 use App\Models\User;
@@ -38,8 +39,17 @@ function createAppointmentIntegrityService(array $attributes = []): Service
     ], $attributes));
 }
 
+function createAppointmentIntegrityCustomer(array $attributes = []): BookingCustomer
+{
+    return BookingCustomer::create(array_merge([
+        'fullname' => fake()->name(),
+        'email' => fake()->unique()->safeEmail(),
+        'contact_number' => '09'.fake()->numerify('#########'),
+    ], $attributes));
+}
+
 function appointmentIntegrityPayload(
-    User $customer,
+    BookingCustomer $customer,
     User $barber,
     Service $service,
     string $date = '2026-07-17',
@@ -47,7 +57,7 @@ function appointmentIntegrityPayload(
     string $status = 'pending',
 ): array {
     return [
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => $date,
@@ -60,10 +70,11 @@ function appointmentIntegrityPayload(
 }
 
 test('scheduled bookings enforce active resources and all business date boundaries', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+    $customer = createAppointmentIntegrityCustomer();
+    $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($manager);
 
     $service->update(['is_active' => false]);
     $this->postJson('/api/v1/appointments', appointmentIntegrityPayload($customer, $barber, $service))
@@ -108,21 +119,12 @@ test('scheduled bookings enforce active resources and all business date boundari
     $this->getJson("/api/v1/appointments/available-slots?barber_id={$barber->id}&date=2026-07-24")
         ->assertUnprocessable()
         ->assertJsonValidationErrors('date');
-    $this->postJson('/api/v1/appointments/batch', [
-        'barber_user_id' => $barber->id,
-        'appointment_date' => '2026-07-24',
-        'appointments' => [
-            ['customer_name' => null, 'service_id' => $service->id, 'appointment_time' => '09:00', 'price' => 300],
-            ['customer_name' => 'Second Guest', 'service_id' => $service->id, 'appointment_time' => '10:00', 'price' => 300],
-        ],
-    ])->assertUnprocessable()->assertJsonValidationErrors('appointment_date');
-
     expect(Appointment::count())->toBe(0);
 });
 
 test('create and reschedule reject duration overlaps while adjacent slots remain available', function () {
-    $firstCustomer = createAppointmentIntegrityUser('customer');
-    $secondCustomer = createAppointmentIntegrityUser('customer');
+    $firstCustomer = createAppointmentIntegrityCustomer();
+    $secondCustomer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $otherBarber = createAppointmentIntegrityUser('barber');
@@ -132,7 +134,7 @@ test('create and reschedule reject duration overlaps while adjacent slots remain
         'duration' => 30,
     ]);
 
-    Sanctum::actingAs($firstCustomer);
+    Sanctum::actingAs($manager);
     $this->postJson(
         '/api/v1/appointments',
         appointmentIntegrityPayload($firstCustomer, $barber, $longService, time: '09:00'),
@@ -142,7 +144,6 @@ test('create and reschedule reject duration overlaps while adjacent slots remain
     expect(Appointment::whereDate('appointment_date', '2026-07-17')->count())->toBe(1);
     expect(Appointment::firstOrFail()->duration_minutes)->toBe(90);
 
-    Sanctum::actingAs($secondCustomer);
     $this->postJson(
         '/api/v1/appointments',
         appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '10:00'),
@@ -156,21 +157,21 @@ test('create and reschedule reject duration overlaps while adjacent slots remain
     )->assertSuccessful();
 
     $rescheduled = Appointment::create([
-        'user_id' => $secondCustomer->id,
+        'booking_customer_id' => $secondCustomer->id,
         'service_id' => $shortService->id,
         'barber_user_id' => $otherBarber->id,
         'appointment_date' => '2026-07-17',
         'appointment_time' => '13:00',
         'duration_minutes' => 30,
         'price' => 300,
-        'status' => 'approved',
+        'status' => 'confirmed',
         'active_slot_key' => "{$otherBarber->id}|2026-07-17|13:00",
     ]);
 
     Sanctum::actingAs($manager);
     $this->putJson(
         "/api/v1/appointments/{$rescheduled->id}",
-        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '10:00', status: 'approved'),
+        appointmentIntegrityPayload($secondCustomer, $barber, $shortService, time: '10:00', status: 'confirmed'),
     )
         ->assertUnprocessable()
         ->assertJsonValidationErrors('appointment_time');
@@ -179,72 +180,13 @@ test('create and reschedule reject duration overlaps while adjacent slots remain
     expect(substr($rescheduled->fresh()->appointment_time, 0, 5))->toBe('13:00');
 });
 
-test('pending appointment quota is checked atomically for an entire batch', function () {
-    $customer = createAppointmentIntegrityUser('customer');
-    $barber = createAppointmentIntegrityUser('barber');
-    $existingBarber = createAppointmentIntegrityUser('barber');
-    $service = createAppointmentIntegrityService(['duration' => 30]);
-
-    foreach (range(1, 10) as $index) {
-        Appointment::create([
-            'user_id' => $customer->id,
-            'service_id' => $service->id,
-            'barber_user_id' => $existingBarber->id,
-            'appointment_date' => '2026-07-18',
-            'appointment_time' => '09:00',
-            'duration_minutes' => 30,
-            'price' => 300,
-            'status' => 'pending',
-            'notes' => "Existing {$index}",
-        ]);
-    }
-
-    Sanctum::actingAs($customer);
-    $this->postJson('/api/v1/appointments/batch', [
-        'barber_user_id' => $barber->id,
-        'appointment_date' => '2026-07-18',
-        'appointments' => [
-            ['customer_name' => null, 'service_id' => $service->id, 'appointment_time' => '09:00', 'price' => 300],
-            ['customer_name' => 'Second Guest', 'service_id' => $service->id, 'appointment_time' => '10:00', 'price' => 300],
-        ],
-    ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('appointments');
-
-    expect(Appointment::where('user_id', $customer->id)->count())->toBe(10);
-    expect(Appointment::whereNotNull('batch_id')->count())->toBe(0);
-});
-
-test('batch identifiers are random and not derived from timestamps or user ids', function () {
-    $customer = createAppointmentIntegrityUser('customer');
-    $barber = createAppointmentIntegrityUser('barber');
-    $service = createAppointmentIntegrityService(['duration' => 30]);
-    Sanctum::actingAs($customer);
-
-    $makeBatch = fn (string $date) => $this->postJson('/api/v1/appointments/batch', [
-        'barber_user_id' => $barber->id,
-        'appointment_date' => $date,
-        'appointments' => [
-            ['customer_name' => null, 'service_id' => $service->id, 'appointment_time' => '09:00', 'price' => 300],
-            ['customer_name' => 'Second Guest', 'service_id' => $service->id, 'appointment_time' => '10:00', 'price' => 300],
-        ],
-    ])->assertOk();
-
-    $firstId = $makeBatch('2026-07-17')->json('data.0.batch_id');
-    $secondId = $makeBatch('2026-07-18')->json('data.0.batch_id');
-
-    expect($firstId)->toMatch('/^BATCH-[A-Z0-9]{24}$/');
-    expect($secondId)->toMatch('/^BATCH-[A-Z0-9]{24}$/');
-    expect($secondId)->not->toBe($firstId);
-});
-
 test('status transitions are one way and future appointments cannot be completed or marked no show', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+    $customer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
     $pending = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
@@ -263,7 +205,7 @@ test('status transitions are one way and future appointments cannot be completed
         ->assertUnprocessable()
         ->assertJsonValidationErrors('status');
 
-    $pending->update(['status' => 'approved']);
+    $pending->update(['status' => 'confirmed']);
     foreach (['completed', 'no_show'] as $terminalStatus) {
         $this->putJson(
             "/api/v1/appointments/{$pending->id}",
@@ -273,23 +215,23 @@ test('status transitions are one way and future appointments cannot be completed
             ->assertJsonValidationErrors('status');
     }
 
-    expect($pending->fresh()->status)->toBe('approved');
+    expect($pending->fresh()->status)->toBe('confirmed');
 });
 
-test('a past approved appointment can complete and terminal appointments cannot be reopened', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+test('a past confirmed appointment can complete and terminal appointments cannot be reopened', function () {
+    $customer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-16',
         'appointment_time' => '10:00',
         'duration_minutes' => 60,
         'price' => 300,
-        'status' => 'approved',
+        'status' => 'confirmed',
         'active_slot_key' => "{$barber->id}|2026-07-16|10:00",
     ]);
     Sanctum::actingAs($manager);
@@ -305,33 +247,33 @@ test('a past approved appointment can complete and terminal appointments cannot 
 
     $this->putJson(
         "/api/v1/appointments/{$appointment->id}",
-        appointmentIntegrityPayload($customer, $barber, $service, status: 'approved'),
+        appointmentIntegrityPayload($customer, $barber, $service, status: 'confirmed'),
     )
         ->assertUnprocessable()
         ->assertJsonValidationErrors('status');
 });
 
-test('a past-due approved appointment cannot be rescheduled', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+test('a past-due confirmed appointment cannot be rescheduled', function () {
+    $customer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-15',
         'appointment_time' => '10:00',
         'duration_minutes' => 60,
         'price' => 300,
-        'status' => 'approved',
+        'status' => 'confirmed',
         'active_slot_key' => "{$barber->id}|2026-07-15|10:00",
     ]);
     Sanctum::actingAs($manager);
 
     $this->putJson(
         "/api/v1/appointments/{$appointment->id}",
-        appointmentIntegrityPayload($customer, $barber, $service, '2026-07-17', '10:00', 'approved'),
+        appointmentIntegrityPayload($customer, $barber, $service, '2026-07-17', '10:00', 'confirmed'),
     )
         ->assertUnprocessable()
         ->assertJsonValidationErrors('appointment');
@@ -341,12 +283,12 @@ test('a past-due approved appointment cannot be rescheduled', function () {
 });
 
 test('only terminal appointments can be soft archived with the acting staff recorded', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+    $customer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
     $pending = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
@@ -357,7 +299,7 @@ test('only terminal appointments can be soft archived with the acting staff reco
         'active_slot_key' => "{$barber->id}|2026-07-17|09:00",
     ]);
     $completed = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-15',
@@ -383,11 +325,11 @@ test('only terminal appointments can be soft archived with the acting staff reco
 });
 
 test('database constraint rejects duplicate active start keys', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+    $customer = createAppointmentIntegrityCustomer();
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService();
     $attributes = [
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
@@ -405,7 +347,7 @@ test('database constraint rejects duplicate active start keys', function () {
 });
 
 test('group status updates are atomic', function () {
-    $customer = createAppointmentIntegrityUser('customer');
+    $customer = createAppointmentIntegrityCustomer();
     $manager = createAppointmentIntegrityUser('manager');
     $barber = createAppointmentIntegrityUser('barber');
     $service = createAppointmentIntegrityService(['duration' => 30]);
@@ -413,7 +355,7 @@ test('group status updates are atomic', function () {
 
     foreach (['09:00', '10:00'] as $time) {
         Appointment::create([
-            'user_id' => $customer->id,
+            'booking_customer_id' => $customer->id,
             'service_id' => $service->id,
             'barber_user_id' => $barber->id,
             'appointment_date' => '2026-07-17',
@@ -428,9 +370,9 @@ test('group status updates are atomic', function () {
 
     Sanctum::actingAs($manager);
     $this->putJson("/api/v1/appointments/batch/{$batchId}/status", [
-        'status' => 'approved',
+        'status' => 'confirmed',
     ])->assertOk();
-    expect(Appointment::where('batch_id', $batchId)->where('status', 'approved')->count())->toBe(2);
+    expect(Appointment::where('batch_id', $batchId)->where('status', 'confirmed')->count())->toBe(2);
 
     Appointment::where('batch_id', $batchId)->latest('id')->firstOrFail()->update(['status' => 'pending']);
     $this->putJson("/api/v1/appointments/batch/{$batchId}/status", [
@@ -438,6 +380,6 @@ test('group status updates are atomic', function () {
         'cancellation_reason' => 'Unavailable',
     ])->assertConflict();
 
-    expect(Appointment::where('batch_id', $batchId)->where('status', 'approved')->count())->toBe(1)
+    expect(Appointment::where('batch_id', $batchId)->where('status', 'confirmed')->count())->toBe(1)
         ->and(Appointment::where('batch_id', $batchId)->where('status', 'pending')->count())->toBe(1);
 });

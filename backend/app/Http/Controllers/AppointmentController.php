@@ -4,18 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\AppointmentHistoryRequest;
 use App\Http\Requests\AppointmentRequest;
-use App\Http\Requests\BatchAppointmentRequest;
 use App\Http\Requests\BatchAppointmentStatusRequest;
 use App\Http\Requests\DashboardScheduleRequest;
 use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\ClosedDates;
-use App\Models\Notification;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
 use App\Services\AppointmentNotificationService;
-use App\Services\PushNotificationService;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
 use Carbon\Carbon;
@@ -23,7 +21,6 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -31,7 +28,7 @@ class AppointmentController extends Controller
 {
     use ApiResponseTrait;
 
-    private const DASHBOARD_SLOT_STATUSES = ['completed', 'approved', 'pending', 'no_show'];
+    private const DASHBOARD_SLOT_STATUSES = ['completed', 'confirmed', 'pending', 'no_show'];
 
     private const DASHBOARD_SLOTS = [
         ['value' => '09:00', 'label' => '9:00 AM'],
@@ -58,16 +55,16 @@ class AppointmentController extends Controller
     public function index(Request $request)
     {
         $query = Appointment::with([
-            'user',
+            'bookingCustomer',
             'barber',
             'service',
+            'addOns',
             'feedback',
+            'emailDeliveries',
         ])->latest();
 
         $user = $request->user();
-        if ($user?->role === 'customer') {
-            $query->where('user_id', $user->id);
-        } elseif (in_array($user?->role, ['admin', 'manager'], true)) {
+        if (in_array($user?->role, ['admin', 'manager'], true)) {
             $query->whereIn('status', AppointmentBookingService::ACTIVE_STATUSES);
         } else {
             abort(403, 'Forbidden.');
@@ -81,17 +78,14 @@ class AppointmentController extends Controller
     public function history(AppointmentHistoryRequest $request)
     {
         $validated = $request->validated();
-        $user = $request->user();
         $query = Appointment::with([
-            'user:id,fullname,email,contact_number',
+            'bookingCustomer:id,fullname,email,contact_number',
             'barber:id,fullname,email,contact_number',
             'service:id,name',
+            'addOns',
             'feedback:id,appointment_id,rating,comment,created_at',
-        ]);
-
-        if ($user->role === 'customer') {
-            $query->where('user_id', $user->id);
-        }
+            'emailDeliveries',
+        ])->whereIn('status', AppointmentBookingService::HISTORY_STATUSES);
 
         if (! empty($validated['status'])) {
             $query->where('status', $validated['status']);
@@ -110,7 +104,7 @@ class AppointmentController extends Controller
                     $searchQuery->orWhere('id', (int) $search);
                 }
 
-                if (preg_match('/^APT-(\d{5})$/i', $search, $matches) === 1) {
+                if (preg_match('/^REF-(\d{5})$/i', $search, $matches) === 1) {
                     $searchQuery->orWhereRaw('((id * 12345 + 67890) % 90000) + 10000 = ?', [(int) $matches[1]]);
                 }
 
@@ -120,9 +114,13 @@ class AppointmentController extends Controller
                     ->orWhereRaw("walkin_customer_name LIKE ? ESCAPE '!'", [$like])
                     ->orWhereRaw("service_name_snapshot LIKE ? ESCAPE '!'", [$like])
                     ->orWhereRaw("barber_name_snapshot LIKE ? ESCAPE '!'", [$like])
-                    ->orWhereHas('user', fn ($userQuery) => $userQuery->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
+                    ->orWhereHas('bookingCustomer', fn ($customerQuery) => $customerQuery
+                        ->whereRaw("fullname LIKE ? ESCAPE '!'", [$like])
+                        ->orWhereRaw("email LIKE ? ESCAPE '!'", [$like])
+                        ->orWhereRaw("contact_number LIKE ? ESCAPE '!'", [$like]))
                     ->orWhereHas('service', fn ($serviceQuery) => $serviceQuery->whereRaw("name LIKE ? ESCAPE '!'", [$like]))
-                    ->orWhereHas('barber', fn ($barberQuery) => $barberQuery->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]));
+                    ->orWhereHas('barber', fn ($barberQuery) => $barberQuery->whereRaw("fullname LIKE ? ESCAPE '!'", [$like]))
+                    ->orWhereHas('addOns', fn ($addOnQuery) => $addOnQuery->whereRaw("name_snapshot LIKE ? ESCAPE '!'", [$like]));
             });
         }
 
@@ -153,21 +151,11 @@ class AppointmentController extends Controller
         $authUser = $request->user();
         $canManage = in_array($authUser?->role, ['admin', 'manager'], true);
 
-        if ($canManage) {
-            $this->assertStaffCanCreateType($authUser, $isWalkin ? 'walkin' : 'appointment');
-        }
-
         if (! $canManage) {
-            if ($isWalkin) {
-                abort(403, 'Customers cannot create walk-in appointments.');
-            }
-
-            if ((int) $validated['user_id'] !== (int) $authUser->id) {
-                abort(403, 'Customers can only create their own appointments.');
-            }
-
-            $validated['status'] = 'pending';
+            abort(403, 'Only staff may create appointments from this endpoint.');
         }
+
+        $this->assertStaffCanCreateType($authUser, $isWalkin ? 'walkin' : 'appointment');
 
         if ($isWalkin) {
             $appointment = DB::transaction(function () use ($validated): Appointment {
@@ -184,7 +172,6 @@ class AppointmentController extends Controller
                 $now = Carbon::now();
 
                 return Appointment::create([
-                    'user_id' => null,
                     'service_id' => $service->id,
                     'barber_user_id' => $resources['barber']->id,
                     'appointment_date' => $validated['appointment_date'],
@@ -215,7 +202,7 @@ class AppointmentController extends Controller
         try {
             $appointment = DB::transaction(function () use ($validated, $status): Appointment {
                 $resources = $this->bookingService->validateAndLock(
-                    (int) $validated['user_id'],
+                    (int) $validated['booking_customer_id'],
                     (int) $validated['barber_user_id'],
                     $validated['appointment_date'],
                     [[
@@ -227,7 +214,7 @@ class AppointmentController extends Controller
                 $service = $resources['services']->get((int) $validated['service_id']);
 
                 return Appointment::create([
-                    'user_id' => $validated['user_id'],
+                    'booking_customer_id' => $validated['booking_customer_id'],
                     'service_id' => $service->id,
                     'barber_user_id' => $resources['barber']->id,
                     'appointment_date' => $validated['appointment_date'],
@@ -243,9 +230,11 @@ class AppointmentController extends Controller
                     'is_walkin' => false,
                     'notes' => $validated['notes'] ?? null,
                     'customer_name_snapshot' => $resources['customer']?->fullname,
+                    'customer_email_snapshot' => $resources['customer']?->email,
+                    'customer_contact_number_snapshot' => $resources['customer']?->contact_number,
                     'service_name_snapshot' => $service->name,
                     'barber_name_snapshot' => $resources['barber']->fullname,
-                    'approved_at' => $status === 'approved' ? Carbon::now() : null,
+                    'confirmed_at' => $status === 'confirmed' ? Carbon::now() : null,
                 ]);
             }, 3);
         } catch (UniqueConstraintViolationException) {
@@ -255,216 +244,16 @@ class AppointmentController extends Controller
         }
 
         $appointment->load([
-            'user',
+            'bookingCustomer',
             'barber',
             'service',
+            'addOns',
+            'emailDeliveries',
         ]);
-
-        if ($appointment->status === 'pending' && ! $canManage) {
-            $adminUsers = User::activeStaffForModule('appointment')->get();
-
-            foreach ($adminUsers as $admin) {
-                Notification::create([
-                    'user_id' => $admin->id,
-                    'type' => 'new_pending_appointment',
-                    'title' => 'New Appointment Request',
-                    'message' => sprintf(
-                        'New booking from %s for %s.',
-                        $appointment->user?->fullname ?? 'A customer',
-                        $appointment->service?->name ?? 'barbershop service'
-                    ),
-                    'appointment_id' => $appointment->id,
-                    'service_name' => $appointment->service?->name,
-                    'barber_name' => $appointment->barber?->fullname,
-                    'appointment_date' => $appointment->appointment_date,
-                    'appointment_time' => $appointment->appointment_time,
-                    'price' => $appointment->price,
-                    'payload' => [
-                        'appointment_id' => $appointment->id,
-                        'customer_name' => $appointment->user?->fullname,
-                        'customer_email' => $appointment->user?->email,
-                        'service_name' => $appointment->service?->name,
-                        'barber_name' => $appointment->barber?->fullname,
-                        'appointment_date' => $appointment->appointment_date,
-                        'appointment_time' => $appointment->appointment_time,
-                        'price' => $appointment->price,
-                    ],
-                    'created_by_user_id' => $appointment->user_id,
-                ]);
-            }
-
-            try {
-                $pushService = new PushNotificationService;
-                $pushTitle = 'New Appointment Request';
-                $pushBody = sprintf(
-                    'New booking from %s for %s.',
-                    $appointment->user?->fullname ?? 'A customer',
-                    $appointment->service?->name ?? 'barbershop service'
-                );
-
-                foreach ($adminUsers as $admin) {
-                    $pushService->send($admin, [
-                        'title' => $pushTitle,
-                        'body' => $pushBody,
-                        'icon' => '/Tol-Logo-White-Bg.png',
-                        'badge' => '/Tol-Logo-White-Bg.png',
-                        'data' => [
-                            'url' => '/'.$admin->role.'/appointment',
-                            'appointment_id' => $appointment->id,
-                        ],
-                    ]);
-                }
-            } catch (\Exception $e) {
-                logger()->error('Push notification failed: '.$e->getMessage());
-            }
-
-            $this->appointmentNotificationService->notifyStatus(
-                $appointment,
-                'pending',
-                $appointment->user_id,
-            );
-            EntityChange::dispatch('notifications');
-        }
 
         EntityChange::dispatch('appointments');
 
         return new AppointmentResource($appointment);
-    }
-
-    public function storeBatch(BatchAppointmentRequest $request)
-    {
-        $validated = $request->validated();
-        $authUser = $request->user();
-
-        if ($authUser?->role !== 'customer') {
-            abort(403, 'Group bookings must be created by the customer who owns them.');
-        }
-
-        $slots = $validated['appointments'];
-        $barberUserId = (int) $validated['barber_user_id'];
-        $appointmentDate = $validated['appointment_date'];
-        $batchId = 'BATCH-'.Str::upper(Str::random(24));
-
-        try {
-            $createdAppointments = DB::transaction(function () use ($slots, $barberUserId, $appointmentDate, $batchId, $authUser, $validated): array {
-                $resources = $this->bookingService->validateAndLock(
-                    (int) $authUser->id,
-                    $barberUserId,
-                    $appointmentDate,
-                    collect($slots)->map(fn (array $slot): array => [
-                        'service_id' => (int) $slot['service_id'],
-                        'appointment_time' => $slot['appointment_time'],
-                    ])->all(),
-                    count($slots),
-                );
-                $appointments = [];
-
-                foreach ($slots as $slot) {
-                    $service = $resources['services']->get((int) $slot['service_id']);
-
-                    $appointments[] = Appointment::create([
-                        'user_id' => $authUser->id,
-                        'service_id' => $service->id,
-                        'barber_user_id' => $resources['barber']->id,
-                        'appointment_date' => $appointmentDate,
-                        'appointment_time' => $slot['appointment_time'],
-                        'duration_minutes' => $service->duration,
-                        'price' => $service->price,
-                        'status' => 'pending',
-                        'active_slot_key' => $this->bookingService->activeSlotKey(
-                            $resources['barber']->id,
-                            $appointmentDate,
-                            $slot['appointment_time'],
-                        ),
-                        'batch_id' => $batchId,
-                        'customer_name' => $slot['customer_name'] ?? null,
-                        'customer_name_snapshot' => filled($slot['customer_name'] ?? null)
-                            ? $slot['customer_name']
-                            : $authUser->fullname,
-                        'service_name_snapshot' => $service->name,
-                        'barber_name_snapshot' => $resources['barber']->fullname,
-                        'notes' => $validated['notes'] ?? null,
-                    ]);
-                }
-
-                return $appointments;
-            }, 3);
-        } catch (UniqueConstraintViolationException) {
-            return response()->json([
-                'message' => 'One or more selected time slots are already booked.',
-            ], 422);
-        }
-
-        foreach ($createdAppointments as $appointment) {
-            $appointment->load(['user', 'barber', 'service']);
-        }
-
-        if ($authUser->role === 'customer') {
-            $appointmentNames = collect($createdAppointments)->map(function ($appt) {
-                return ($appt->customer_name ?? $appt->user?->fullname).' — '.($appt->service?->name ?? 'Service');
-            })->implode(', ');
-
-            $adminUsers = User::activeStaffForModule('appointment')->get();
-
-            foreach ($adminUsers as $admin) {
-                Notification::create([
-                    'user_id' => $admin->id,
-                    'type' => 'new_pending_appointment',
-                    'title' => 'New Group Booking Request',
-                    'message' => sprintf(
-                        'Group booking from %s (%d appointments): %s.',
-                        $authUser->fullname,
-                        count($createdAppointments),
-                        $appointmentNames
-                    ),
-                    'payload' => [
-                        'batch_id' => $batchId,
-                        'customer_name' => $authUser->fullname,
-                        'customer_email' => $authUser->email,
-                        'barber_name' => $createdAppointments[0]->barber?->fullname,
-                        'appointment_date' => $appointmentDate,
-                        'appointment_count' => count($createdAppointments),
-                    ],
-                    'created_by_user_id' => $authUser->id,
-                ]);
-            }
-
-            try {
-                $pushService = new PushNotificationService;
-                $pushTitle = 'New Group Booking Request';
-                $pushBody = sprintf(
-                    'Group booking from %s (%d appointments).',
-                    $authUser->fullname,
-                    count($createdAppointments)
-                );
-
-                foreach ($adminUsers as $admin) {
-                    $pushService->send($admin, [
-                        'title' => $pushTitle,
-                        'body' => $pushBody,
-                        'icon' => '/Tol-Logo-White-Bg.png',
-                        'badge' => '/Tol-Logo-White-Bg.png',
-                        'data' => [
-                            'url' => '/'.$admin->role.'/appointment',
-                            'batch_id' => $batchId,
-                        ],
-                    ]);
-                }
-            } catch (\Exception $e) {
-                logger()->error('Push notification failed: '.$e->getMessage());
-            }
-
-            $this->appointmentNotificationService->notifyGroupStatus(
-                new Collection($createdAppointments),
-                'pending',
-                $authUser->id,
-            );
-            EntityChange::dispatch('notifications');
-        }
-
-        EntityChange::dispatch('appointments');
-
-        return AppointmentResource::collection(collect($createdAppointments));
     }
 
     public function updateBatchStatus(BatchAppointmentStatusRequest $request, string $batchId)
@@ -481,8 +270,8 @@ class AppointmentController extends Controller
 
         $isHomogeneousBatch = $snapshot->count() >= 2
             && $snapshot->count() <= 11
-            && $snapshot->pluck('user_id')->filter()->unique()->count() === 1
-            && $snapshot->pluck('user_id')->filter()->count() === $snapshot->count()
+            && $snapshot->pluck('booking_customer_id')->filter()->unique()->count() === 1
+            && $snapshot->pluck('booking_customer_id')->filter()->count() === $snapshot->count()
             && $snapshot->pluck('barber_user_id')->unique()->count() === 1
             && $snapshot->map(fn (Appointment $appointment): string => $appointment->appointment_date->toDateString())->unique()->count() === 1
             && ! $snapshot->contains(fn (Appointment $appointment): bool => $appointment->is_walkin);
@@ -492,10 +281,10 @@ class AppointmentController extends Controller
         }
 
         $result = DB::transaction(function () use ($batchId, $snapshot, $status, $validated): array {
-            if ($status === 'approved') {
+            if ($status === 'confirmed') {
                 $first = $snapshot->first();
                 $this->bookingService->validateAndLock(
-                    (int) $first->user_id,
+                    (int) $first->booking_customer_id,
                     (int) $first->barber_user_id,
                     $first->appointment_date->toDateString(),
                     $snapshot->map(fn (Appointment $appointment): array => [
@@ -521,8 +310,8 @@ class AppointmentController extends Controller
             foreach ($appointments as $appointment) {
                 $appointment->update([
                     'status' => $status,
-                    'active_slot_key' => $status === 'approved' ? $appointment->active_slot_key : null,
-                    'approved_at' => $status === 'approved' ? $now : null,
+                    'active_slot_key' => $status === 'confirmed' ? $appointment->active_slot_key : null,
+                    'confirmed_at' => $status === 'confirmed' ? $now : null,
                     'rejected_at' => $status === 'rejected' ? $now : null,
                     'cancellation_reason' => $status === 'rejected'
                         ? ($validated['cancellation_reason'] ?? null)
@@ -539,9 +328,9 @@ class AppointmentController extends Controller
 
         /** @var Collection<int, Appointment> $appointments */
         $appointments = $result['appointments'];
-        $appointments->load(['user', 'barber', 'service']);
+        $appointments->load(['bookingCustomer', 'barber', 'service', 'addOns', 'emailDeliveries']);
 
-        foreach ($appointments->groupBy('user_id') as $userAppointments) {
+        foreach ($appointments->groupBy('booking_customer_id') as $userAppointments) {
             $this->appointmentNotificationService->notifyGroupStatus(
                 $userAppointments,
                 $status,
@@ -561,15 +350,15 @@ class AppointmentController extends Controller
     public function show(Request $request, string $id)
     {
         $query = Appointment::with([
-            'user',
+            'bookingCustomer',
             'barber',
             'service',
+            'addOns',
+            'emailDeliveries',
         ]);
 
         $user = $request->user();
-        if ($user?->role === 'customer') {
-            $query->where('user_id', $user->id);
-        } elseif (! in_array($user?->role, ['admin', 'manager'], true)) {
+        if (! in_array($user?->role, ['admin', 'manager'], true)) {
             abort(403, 'Forbidden.');
         }
 
@@ -593,7 +382,6 @@ class AppointmentController extends Controller
         try {
             [$appointment, $originalStatus, $nextStatus, $detailsChanged] = DB::transaction(function () use ($id, $validated, $snapshot): array {
                 $this->bookingService->lockUsers([
-                    $snapshot->user_id,
                     $snapshot->barber_user_id,
                     $validated['barber_user_id'],
                 ]);
@@ -609,9 +397,9 @@ class AppointmentController extends Controller
                 $nextStatus = (string) ($validated['status'] ?? $originalStatus);
                 $this->bookingService->assertValidStatusTransition($originalStatus, $nextStatus);
 
-                if ((int) ($validated['user_id'] ?? 0) !== (int) $appointment->user_id) {
+                if ((int) ($validated['booking_customer_id'] ?? 0) !== (int) $appointment->booking_customer_id) {
                     throw ValidationException::withMessages([
-                        'user_id' => 'An appointment cannot be transferred to another customer.',
+                        'booking_customer_id' => 'An appointment cannot be transferred to another customer.',
                     ]);
                 }
 
@@ -631,7 +419,7 @@ class AppointmentController extends Controller
 
                 $today = Carbon::now((string) config('app.shop_timezone', 'Asia/Manila'))
                     ->toDateString();
-                if ($detailsChanged && $originalStatus === 'approved' && $originalDate < $today) {
+                if ($detailsChanged && $originalStatus === 'confirmed' && $originalDate < $today) {
                     throw ValidationException::withMessages([
                         'appointment' => 'Past-due appointments cannot be rescheduled.',
                     ]);
@@ -645,7 +433,7 @@ class AppointmentController extends Controller
 
                 if (in_array($nextStatus, AppointmentBookingService::ACTIVE_STATUSES, true)) {
                     $resources = $this->bookingService->validateAndLock(
-                        (int) $appointment->user_id,
+                        (int) $appointment->booking_customer_id,
                         (int) $validated['barber_user_id'],
                         $validated['appointment_date'],
                         [[
@@ -661,7 +449,7 @@ class AppointmentController extends Controller
                 } else {
                     $service = Service::findOrFail($appointment->service_id);
                     $barber = User::withTrashed()->findOrFail($appointment->barber_user_id);
-                    $customer = $appointment->user()->first();
+                    $customer = $appointment->bookingCustomer()->first();
                 }
 
                 if ($nextStatus !== $originalStatus) {
@@ -679,7 +467,10 @@ class AppointmentController extends Controller
                     'appointment_date' => $validated['appointment_date'],
                     'appointment_time' => $validated['appointment_time'],
                     'duration_minutes' => $service->duration,
-                    'price' => $service->price,
+                    'price' => round(
+                        (float) $service->price + (float) $appointment->addOns()->sum('price'),
+                        2,
+                    ),
                     'status' => $nextStatus,
                     'active_slot_key' => in_array($nextStatus, AppointmentBookingService::ACTIVE_STATUSES, true)
                         ? $this->bookingService->activeSlotKey(
@@ -704,7 +495,7 @@ class AppointmentController extends Controller
 
                 if ($nextStatus !== $originalStatus) {
                     $timestampColumn = match ($nextStatus) {
-                        'approved' => 'approved_at',
+                        'confirmed' => 'confirmed_at',
                         'completed' => 'completed_at',
                         'cancelled' => 'cancelled_at',
                         'rejected' => 'rejected_at',
@@ -726,7 +517,7 @@ class AppointmentController extends Controller
             ], 422);
         }
 
-        $appointment->loadMissing(['user', 'barber', 'service']);
+        $appointment->loadMissing(['bookingCustomer', 'barber', 'service', 'addOns', 'emailDeliveries']);
 
         $customerNotification = null;
         if ($nextStatus && $nextStatus !== $originalStatus) {
@@ -747,9 +538,11 @@ class AppointmentController extends Controller
         }
 
         $appointment->load([
-            'user',
+            'bookingCustomer',
             'barber',
             'service',
+            'addOns',
+            'emailDeliveries',
         ]);
 
         EntityChange::dispatch('appointments');
@@ -780,7 +573,7 @@ class AppointmentController extends Controller
 
         if (! $result['archived']) {
             return response()->json([
-                'message' => 'Pending or approved appointments must be cancelled or rejected before archiving.',
+                'message' => 'Pending or confirmed appointments must be cancelled or rejected before archiving.',
             ], 422);
         }
 
@@ -799,15 +592,15 @@ class AppointmentController extends Controller
         $stats = Appointment::withTrashed()
             ->where('appointment_date', '>=', $from)
             ->where('appointment_date', '<', $to)
-            ->selectRaw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_appointments, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_appointments, SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_appointments, SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END) as total_revenue")
+            ->selectRaw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_appointments, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_appointments, SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed_appointments, SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END) as total_revenue")
             ->first();
 
-        $totalCustomers = User::where('role', 'customer')->count();
+        $totalCustomers = BookingCustomer::query()->count();
 
         return response()->json([
             'completed_appointments' => (int) ($stats->completed_appointments ?? 0),
             'pending_appointments' => (int) ($stats->pending_appointments ?? 0),
-            'approved_appointments' => (int) ($stats->approved_appointments ?? 0),
+            'confirmed_appointments' => (int) ($stats->confirmed_appointments ?? 0),
             'total_customers' => $totalCustomers,
             'total_revenue' => (float) ($stats->total_revenue ?? 0),
         ]);
@@ -928,7 +721,7 @@ class AppointmentController extends Controller
             ])
             ->selectRaw("
                 SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_appointments,
-                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_appointments,
+                SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) as confirmed_appointments,
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_appointments
             ")
             ->first();
@@ -1012,7 +805,7 @@ class AppointmentController extends Controller
 
         $selectedDateKey = $selectedDate->toDateString();
         $selectedAppointments = Appointment::with([
-            'user:id,fullname,email,contact_number',
+            'bookingCustomer:id,fullname,email,contact_number',
             'barber:id,fullname',
             'service:id,name',
         ])
@@ -1038,7 +831,7 @@ class AppointmentController extends Controller
             'active_barbers' => count($activeBarberIds),
             'weekly_stats' => [
                 'completed_appointments' => (int) ($weeklyAppointmentStats?->completed_appointments ?? 0),
-                'approved_appointments' => (int) ($weeklyAppointmentStats?->approved_appointments ?? 0),
+                'confirmed_appointments' => (int) ($weeklyAppointmentStats?->confirmed_appointments ?? 0),
                 'pending_appointments' => (int) ($weeklyAppointmentStats?->pending_appointments ?? 0),
                 'average_rating' => $averageRating ? round((float) $averageRating, 1) : 0,
             ],
@@ -1062,7 +855,7 @@ class AppointmentController extends Controller
 
         $date = $validated['date'];
 
-        $appointments = Appointment::with(['user:id,fullname,email,contact_number', 'barber:id,fullname', 'service:id,name'])
+        $appointments = Appointment::with(['bookingCustomer:id,fullname,email,contact_number', 'barber:id,fullname', 'service:id,name'])
             ->whereDate('appointment_date', $date)
             ->whereIn('status', self::DASHBOARD_SLOT_STATUSES)
             ->get();
@@ -1075,8 +868,8 @@ class AppointmentController extends Controller
             $slotMap[$time12][] = [
                 'id' => $appointment->id,
                 'customer' => $appointment->customerDisplayName(),
-                'customer_email' => $appointment->user?->email,
-                'customer_contact' => $appointment->user?->contact_number,
+                'customer_email' => $appointment->customer_email_snapshot ?? $appointment->bookingCustomer?->email,
+                'customer_contact' => $appointment->customer_contact_number_snapshot ?? $appointment->bookingCustomer?->contact_number,
                 'service' => $appointment->service?->name,
                 'barber' => $appointment->barber?->fullname,
                 'price' => (float) $appointment->price,
@@ -1149,7 +942,7 @@ class AppointmentController extends Controller
             ->where('barber_user_id', $validated['barber_id'])
             ->where('appointment_date', '>=', $validated['date'])
             ->where('appointment_date', '<', $nextDate)
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', ['pending', 'confirmed'])
             ->when(
                 isset($validated['ignore_appointment_id']),
                 fn ($query) => $query->whereKeyNot($validated['ignore_appointment_id']),
@@ -1209,8 +1002,8 @@ class AppointmentController extends Controller
                     ->map(fn (Appointment $appointment): array => [
                         'id' => $appointment->id,
                         'customer' => $appointment->customerDisplayName(),
-                        'customer_email' => $appointment->user?->email,
-                        'customer_contact' => $appointment->user?->contact_number,
+                        'customer_email' => $appointment->customer_email_snapshot ?? $appointment->bookingCustomer?->email,
+                        'customer_contact' => $appointment->customer_contact_number_snapshot ?? $appointment->bookingCustomer?->contact_number,
                         'service' => $appointment->service?->name,
                         'barber' => $appointment->barber?->fullname,
                         'price' => (float) $appointment->price,

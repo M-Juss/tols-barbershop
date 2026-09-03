@@ -13,8 +13,12 @@ import {
   CheckCircle2,
   UserX,
   Scissors,
+  RotateCcw,
+  Search,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { GroupPendingCard } from "@/components/common/GroupPendingCard";
+import { AppointmentAddOnDialog } from "@/components/common/AppointmentAddOnDialog";
 import dynamic from "next/dynamic";
 const PendingAppointmentDetailDialog = dynamic(
   () =>
@@ -37,10 +42,11 @@ import { TextAreaWithLabel } from "@/components/common/TextAreaWithLabel";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getAppointments,
+  resendBookingEmail,
   updateBatchAppointmentStatus,
   updateAppointment,
   type Appointment,
-} from "@/services/customer/appointment.api";
+} from "@/services/shared/appointment.api";
 import { updateAppointmentSchema } from "@/validations/appointment.validation";
 import { CancellationForm } from "@/forms/CancellationForm";
 import { RescheduleForm, type RescheduleSubmitData } from "@/forms/RescheduleForm";
@@ -56,6 +62,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
+import { formatBookingId } from "@/lib/booking";
 import { formatTime12 } from "@/lib/time-slots";
 
 type BarberGroup = {
@@ -123,6 +130,28 @@ function isUnitOverdue(appts: Appointment[], nowMs: number): boolean {
   return earliest < nowMs;
 }
 
+function matchesAppointmentSearch(appt: Appointment, search: string): boolean {
+  const query = search.trim().toLowerCase();
+  if (!query) return true;
+
+  return [
+    String(appt.id),
+    formatBookingId(appt.id),
+    appt.customer.fullname,
+    appt.customer.email,
+    appt.customer_name,
+    appt.customer_name_snapshot,
+    appt.barber.fullname,
+    appt.barber_name_snapshot,
+    appt.service.name,
+    appt.service_name_snapshot,
+    ...(appt.add_ons ?? []).map((addOn) => addOn.name),
+    appt.appointment_date,
+    formatShortDate(appt.appointment_date),
+    formatTime12(appt.appointment_time),
+  ].some((value) => value?.toLowerCase().includes(query));
+}
+
 function sortPendingUnits(units: PendingUnit[]): PendingUnit[] {
   const upcoming: PendingUnit[] = [];
   const overdue: PendingUnit[] = [];
@@ -141,11 +170,13 @@ function ActionMenu({
   onSelect,
   onCancel,
   onReschedule,
+  onAddOn,
   disabled,
 }: {
   onSelect: (action: "completed" | "no_show") => void;
   onCancel?: () => void;
   onReschedule?: () => void;
+  onAddOn?: () => void;
   disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -166,12 +197,24 @@ function ActionMenu({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-label="Appointment actions"
         className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-400"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
       {open && (
         <div className="absolute right-0 top-8 z-10 w-40 bg-white rounded-xl border border-gray-200 shadow-lg py-1 text-sm">
+          {onAddOn && (
+            <button
+              onClick={() => {
+                onAddOn();
+                setOpen(false);
+              }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-gray-50 text-gray-700"
+            >
+              <Plus className="w-4 h-4 text-red-500" /> Add-on
+            </button>
+          )}
           <button
             onClick={() => {
               if (disabled) return;
@@ -237,6 +280,9 @@ function AppointmentRow({
   onStatusChange,
   onCancel,
   onReschedule,
+  onAddOn,
+  onResendEmail,
+  resendingEmail,
   todayDate,
   className = "",
 }: {
@@ -244,40 +290,101 @@ function AppointmentRow({
   onStatusChange: (appt: Appointment, status: "completed" | "no_show") => void;
   onCancel?: (appt: Appointment) => void;
   onReschedule?: (appt: Appointment) => void;
+  onAddOn?: (appt: Appointment) => void;
+  onResendEmail: (deliveryId: number) => void;
+  resendingEmail: boolean;
   todayDate: string;
   className?: string;
 }) {
   const actionDisabled = appt.appointment_date.split("T")[0] > todayDate;
   const canReschedule = appt.appointment_date.split("T")[0] >= todayDate;
   return (
-    <div className={cn("rounded-xl border border-gray-200 bg-white px-4 py-3", className)}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex items-center gap-5">
-            <div className="shrink-0 w-24">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Time</p>
-              <p className="font-bold text-blue-600 text-sm">{formatTime12(appt.appointment_time)}</p>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Customer</p>
-              <p className="font-bold text-gray-900 text-sm truncate">{appt.customer.fullname}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-5">
-            <div className="shrink-0 w-24">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Service</p>
-              <p className="text-xs text-gray-600 truncate">{appt.service.name}</p>
-            </div>
-            <div className="shrink-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Price</p>
-              <p className="text-xs font-medium text-gray-700">₱{Number(appt.price).toLocaleString()}</p>
-            </div>
+    <div className={cn("relative rounded-xl border border-gray-200 bg-white p-4", className)}>
+      <div className="pr-10">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Customer</p>
+        <p className="mt-0.5 break-words font-bold text-gray-900 text-sm">{appt.customer.fullname}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{formatBookingId(appt.id)}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+          {appt.customer.email ? (
+            <span className="inline-flex min-w-0 items-center gap-1.5 break-all">
+              <Mail className="size-3.5 shrink-0" />
+              {appt.customer.email}
+            </span>
+          ) : null}
+          {appt.customer.contact_number ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Phone className="size-3.5 shrink-0" />
+              {appt.customer.contact_number}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 border-t border-gray-100 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Service</p>
+          <p className="mt-0.5 break-words text-sm leading-snug text-gray-700">{appt.service.name}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Barber</p>
+          <p className="mt-0.5 break-words text-sm text-gray-700">{appt.barber.fullname}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Date</p>
+          <p className="mt-0.5 text-sm text-gray-700">{formatShortDate(appt.appointment_date)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Time</p>
+          <p className="mt-0.5 font-bold text-sm text-blue-600">{formatTime12(appt.appointment_time)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Price</p>
+          <p className="mt-0.5 text-sm font-semibold text-gray-700">₱{Number(appt.price).toLocaleString()}</p>
+        </div>
+      </div>
+
+      {appt.add_ons && appt.add_ons.length > 0 ? (
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Add-ons</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {appt.add_ons.map((addOn) => (
+              <span
+                key={addOn.id}
+                className="rounded-full bg-red-50 px-2 py-1 text-xs text-red-700"
+              >
+                {addOn.name} · ₱{Number(addOn.price).toLocaleString()}
+              </span>
+            ))}
           </div>
         </div>
+      ) : null}
+
+      {appt.latest_email_delivery ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500">
+          <Mail className="size-3.5 shrink-0" />
+          <span className="capitalize">
+            {appt.latest_email_delivery.type.replaceAll("_", " ")} email: {appt.latest_email_delivery.status}
+          </span>
+          {appt.latest_email_delivery.status === "failed" ? (
+            <button
+              type="button"
+              disabled={resendingEmail}
+              onClick={() => onResendEmail(appt.latest_email_delivery!.id)}
+              className="inline-flex items-center gap-1 font-semibold text-red-600 disabled:opacity-50"
+            >
+              <RotateCcw className="size-3" />
+              {resendingEmail ? "Resending..." : "Resend"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="absolute right-3 top-3">
         <ActionMenu
           onSelect={(status) => onStatusChange(appt, status)}
           onCancel={() => onCancel?.(appt)}
           onReschedule={canReschedule ? () => onReschedule?.(appt) : undefined}
+          onAddOn={() => onAddOn?.(appt)}
           disabled={actionDisabled}
         />
       </div>
@@ -349,7 +456,7 @@ function PendingCard({
           <Button
             onClick={() => onApprove(req)}
             disabled={disabled || overdue}
-            title={overdue ? "Cannot approve an overdue appointment" : undefined}
+            title={overdue ? "Cannot confirm an overdue appointment" : undefined}
             className={cn(
               "gap-1.5 text-sm h-9",
               overdue
@@ -357,7 +464,7 @@ function PendingCard({
                 : "bg-green-600 hover:bg-green-700 text-white",
             )}
           >
-            <Check className="w-4 h-4" /> Approve
+            <Check className="w-4 h-4" /> Confirm
           </Button>
           <Button
             onClick={() => onCancel(req)}
@@ -418,9 +525,10 @@ export function Appointment() {
   const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] =
     useState<Appointment | null>(null);
-  const [approvedPage, setApprovedPage] = useState(1);
+  const [confirmedPage, setConfirmedPage] = useState(1);
+  const [appointmentSearch, setAppointmentSearch] = useState("");
   const [pastDueOpen, setPastDueOpen] = useState(false);
-  const approvedPageSize = 10;
+  const confirmedPageSize = 10;
   const [confirmActionOpen, setConfirmActionOpen] = useState(false);
   const [confirmActionTarget, setConfirmActionTarget] = useState<{
     appt: Appointment;
@@ -439,6 +547,8 @@ export function Appointment() {
     Appointment[] | null
   >(null);
   const [now, setNow] = useState(() => Date.now());
+  const [resendingDeliveryId, setResendingDeliveryId] = useState<number | null>(null);
+  const [addOnAppointment, setAddOnAppointment] = useState<Appointment | null>(null);
 
   const loadAppointments = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -517,47 +627,52 @@ export function Appointment() {
     return sortPendingUnits(units);
   }, [pending, now]);
 
-  const approvedAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "approved"),
+  const confirmedAppointments = useMemo(
+    () => appointments.filter((a) => a.status === "confirmed"),
     [appointments],
+  );
+
+  const filteredConfirmedAppointments = useMemo(
+    () => confirmedAppointments.filter((appt) => matchesAppointmentSearch(appt, appointmentSearch)),
+    [appointmentSearch, confirmedAppointments],
   );
 
   const [today] = useState(getTodayDate);
 
-  const upcomingApproved = useMemo(
-    () => approvedAppointments.filter((a) => a.appointment_date >= today),
-    [approvedAppointments, today],
+  const upcomingConfirmed = useMemo(
+    () => filteredConfirmedAppointments.filter((a) => a.appointment_date >= today),
+    [filteredConfirmedAppointments, today],
   );
 
-  const pastDueApproved = useMemo(
-    () => approvedAppointments.filter((a) => a.appointment_date < today),
-    [approvedAppointments, today],
+  const pastDueConfirmed = useMemo(
+    () => filteredConfirmedAppointments.filter((a) => a.appointment_date < today),
+    [filteredConfirmedAppointments, today],
   );
 
   const pastDueGroups = useMemo(
-    () => toDateBarberGroups(pastDueApproved),
-    [pastDueApproved],
+    () => toDateBarberGroups(pastDueConfirmed),
+    [pastDueConfirmed],
   );
 
-  const approvedTotalPages = Math.max(1, Math.ceil(upcomingApproved.length / approvedPageSize));
+  const confirmedTotalPages = Math.max(1, Math.ceil(upcomingConfirmed.length / confirmedPageSize));
 
-  const paginatedApprovedGroups = useMemo(() => {
-    const start = (approvedPage - 1) * approvedPageSize;
-    const paginated = upcomingApproved.slice(start, start + approvedPageSize);
+  const paginatedConfirmedGroups = useMemo(() => {
+    const start = (confirmedPage - 1) * confirmedPageSize;
+    const paginated = upcomingConfirmed.slice(start, start + confirmedPageSize);
     return toDateBarberGroups(paginated);
-  }, [upcomingApproved, approvedPage]);
+  }, [upcomingConfirmed, confirmedPage]);
 
   const runUpdate = async (
     appt: Appointment,
-    status: "approved" | "cancelled" | "rejected" | "completed" | "no_show",
+    status: "confirmed" | "cancelled" | "rejected" | "completed" | "no_show",
     cancellationReason?: string,
   ): Promise<boolean> => {
     try {
-      const userId = appt.customer.id;
+      const bookingCustomerId = appt.customer.id;
       const serviceId = appt.service.id;
       const barberUserId = appt.barber.id;
 
-      if (!userId || !serviceId || !barberUserId) {
+      if (!bookingCustomerId || !serviceId || !barberUserId) {
         toast.error("This appointment is missing required details.");
         return false;
       }
@@ -570,7 +685,7 @@ export function Appointment() {
           : null;
 
       const payload = {
-        user_id: userId,
+        booking_customer_id: bookingCustomerId,
         service_id: serviceId,
         barber_user_id: barberUserId,
         appointment_date: appt.appointment_date,
@@ -590,7 +705,7 @@ export function Appointment() {
 
       await updateAppointment(appt.id, validation.data);
       const actionMessages: Record<string, string> = {
-        approved: "Appointment approved",
+        confirmed: "Appointment confirmed",
         completed: "Appointment marked as completed",
         cancelled: "Appointment cancelled",
         rejected: "Appointment rejected",
@@ -617,16 +732,16 @@ export function Appointment() {
     try {
       setUpdatingBatchIds((prev) => [...prev, batchId]);
 
-      await updateBatchAppointmentStatus(batchId, "approved");
+      await updateBatchAppointmentStatus(batchId, "confirmed");
       toast.success(
-        `${appts.length} appointment${appts.length > 1 ? "s" : ""} approved`,
+        `${appts.length} appointment${appts.length > 1 ? "s" : ""} confirmed`,
       );
 
       await loadAppointments();
       window.dispatchEvent(new CustomEvent("appointments:updated"));
     } catch (error) {
-      console.error("Failed to batch approve:", error);
-      toast.error(error instanceof Error ? error.message : "Could not approve appointments. Please try again.");
+      console.error("Failed to confirm group:", error);
+      toast.error(error instanceof Error ? error.message : "Could not confirm appointments. Please try again.");
     } finally {
       setUpdatingBatchIds((prev) => prev.filter((id) => id !== batchId));
     }
@@ -705,6 +820,30 @@ export function Appointment() {
     handleCancelClick(targets[0]);
   };
 
+  const handleResendEmail = async (deliveryId: number) => {
+    try {
+      setResendingDeliveryId(deliveryId);
+      await resendBookingEmail(deliveryId);
+      toast.success("Email sent successfully");
+      await loadAppointments();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not resend the email.");
+    } finally {
+      setResendingDeliveryId(null);
+    }
+  };
+
+  const handleAddOnUpdated = (updatedAppointment: Appointment) => {
+    setAppointments((current) =>
+      current.map((appointment) =>
+        appointment.id === updatedAppointment.id
+          ? updatedAppointment
+          : appointment,
+      ),
+    );
+    setAddOnAppointment(updatedAppointment);
+  };
+
   const handleCancellationSubmit = async (
     data: CancellationReasonSchemaFormValues,
   ) => {
@@ -742,7 +881,7 @@ export function Appointment() {
       return;
     }
 
-    const success = await runUpdate(targets[0], "approved");
+    const success = await runUpdate(targets[0], "confirmed");
     if (success) setApproveTarget(null);
   };
 
@@ -758,7 +897,7 @@ export function Appointment() {
       setUpdatingIds((prev) => [...prev, rescheduleAppointment.id]);
 
       const payload = {
-        user_id: rescheduleAppointment.customer.id!,
+        booking_customer_id: rescheduleAppointment.customer.id!,
         service_id: rescheduleAppointment.service.id!,
         barber_user_id: data.barber_user_id,
         appointment_date: data.appointment_date,
@@ -766,7 +905,7 @@ export function Appointment() {
         duration_minutes: rescheduleAppointment.duration_minutes,
         price: Number(rescheduleAppointment.price),
         notes: data.reason,
-        status: "approved" as const,
+        status: "confirmed" as const,
       };
 
       const validation = updateAppointmentSchema.safeParse(payload);
@@ -808,7 +947,7 @@ export function Appointment() {
     <div className="w-full bg-slate-100 p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          Appointments
+          Schedules
         </h1>
         <p className="text-gray-500 mt-1">
           Manage appointment requests and scheduled appointments
@@ -876,31 +1015,52 @@ export function Appointment() {
 
         <div className="flex flex-col gap-4 lg:order-1">
           <SectionCard
-            title="Approved Appointments"
+            title="Confirmed Appointments"
             description="Scheduled appointments grouped by date"
           >
+
+            <div className="relative mb-5 w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                type="search"
+                value={appointmentSearch}
+                onChange={(event) => {
+                  setAppointmentSearch(event.target.value);
+                  setConfirmedPage(1);
+                }}
+                placeholder="Search appointments by customer, service, barber, date, or ID"
+                aria-label="Search confirmed appointments"
+                className="h-9 pl-9"
+                maxLength={100}
+              />
+            </div>
 
             {appointmentLoading ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <p className="text-sm">Loading appointments...</p>
               </div>
-            ) : approvedAppointments.length === 0 ? (
+            ) : confirmedAppointments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <CalendarDays className="w-10 h-10 mb-2 opacity-20" />
                 <p className="text-sm">No appointments scheduled.</p>
               </div>
+            ) : filteredConfirmedAppointments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <Search className="mb-2 h-10 w-10 opacity-20" />
+                <p className="text-sm">No appointments match your search.</p>
+              </div>
             ) : (
               <>
-                {upcomingApproved.length > 0 && (
+                {upcomingConfirmed.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 mb-4">
                       <h3 className="font-semibold text-gray-800 text-sm">Upcoming</h3>
                       <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                        {upcomingApproved.length}
+                        {upcomingConfirmed.length}
                       </span>
                     </div>
                     <div className="flex flex-col gap-6">
-                      {paginatedApprovedGroups.map((group) => (
+                      {paginatedConfirmedGroups.map((group) => (
                         <div key={group.sortKey}>
                           <div className="flex items-center gap-3 mb-3">
                             <CalendarDays className="w-4 h-4 text-blue-500" />
@@ -935,6 +1095,9 @@ export function Appointment() {
                                         }}
                                         onCancel={handleCancelClick}
                                         onReschedule={handleRescheduleClick}
+                                        onAddOn={setAddOnAppointment}
+                                        onResendEmail={handleResendEmail}
+                                        resendingEmail={resendingDeliveryId === appt.latest_email_delivery?.id}
                                         todayDate={todayDateRef.current}
                                       />
                                     </div>
@@ -947,7 +1110,7 @@ export function Appointment() {
                       ))}
                     </div>
 
-                    {upcomingApproved.length > approvedPageSize ? (
+                    {upcomingConfirmed.length > confirmedPageSize ? (
                       <Pagination className="mt-4 overflow-hidden px-1">
                         <PaginationContent className="flex-nowrap gap-0.5">
                           <PaginationItem>
@@ -957,14 +1120,14 @@ export function Appointment() {
                               text=""
                               onClick={(event) => {
                                 event.preventDefault();
-                                setApprovedPage((prev) => Math.max(1, prev - 1));
+                                setConfirmedPage((prev) => Math.max(1, prev - 1));
                               }}
                             />
                           </PaginationItem>
                           {(() => {
                             const pages: (number | "...")[] = [];
-                            const total = approvedTotalPages;
-                            const current = approvedPage;
+                            const total = confirmedTotalPages;
+                            const current = confirmedPage;
                             pages.push(1);
                             if (current > 3) pages.push("...");
                             const start = Math.max(2, current - 1);
@@ -985,7 +1148,7 @@ export function Appointment() {
                                     className="h-7 w-7 sm:h-8 sm:w-8 text-xs sm:text-sm font-medium rounded-lg"
                                     onClick={(event) => {
                                       event.preventDefault();
-                                      setApprovedPage(pageNo);
+                                      setConfirmedPage(pageNo);
                                     }}
                                   >
                                     {pageNo}
@@ -1001,7 +1164,7 @@ export function Appointment() {
                               text=""
                               onClick={(event) => {
                                 event.preventDefault();
-                                setApprovedPage((prev) => Math.min(approvedTotalPages, prev + 1));
+                                setConfirmedPage((prev) => Math.min(confirmedTotalPages, prev + 1));
                               }}
                             />
                           </PaginationItem>
@@ -1011,7 +1174,7 @@ export function Appointment() {
                   </>
                 )}
 
-                {pastDueApproved.length > 0 && (
+                {pastDueConfirmed.length > 0 && (
                   <div className="mt-6 border-t border-gray-200 pt-4">
                     <button
                       onClick={() => setPastDueOpen((prev) => !prev)}
@@ -1021,7 +1184,7 @@ export function Appointment() {
                         Past Due
                       </span>
                       <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
-                        {pastDueApproved.length}
+                        {pastDueConfirmed.length}
                       </span>
                       <span className="text-gray-400 ml-auto text-xs">
                         {pastDueOpen ? "Hide" : "Show"}
@@ -1058,6 +1221,9 @@ export function Appointment() {
                                           setConfirmActionOpen(true);
                                         }}
                                         onCancel={handleCancelClick}
+                                        onAddOn={setAddOnAppointment}
+                                        onResendEmail={handleResendEmail}
+                                        resendingEmail={resendingDeliveryId === appt.latest_email_delivery?.id}
                                         todayDate={todayDateRef.current}
                                         className={
                                           (updatingIds.includes(appt.id) ? "opacity-60" : "") +
@@ -1088,8 +1254,10 @@ export function Appointment() {
         onOpenChange={(open) => {
           if (!open) setPendingDetailAppointments(null);
         }}
-        onApprove={handlePendingDetailApprove}
+        onConfirm={handlePendingDetailApprove}
         onReject={handlePendingDetailReject}
+        onResendEmail={handleResendEmail}
+        resendingEmail={resendingDeliveryId !== null}
         disabled={
           pendingDetailAppointments?.some(
             (appointment) =>
@@ -1111,11 +1279,11 @@ export function Appointment() {
           <DialogHeader>
             <DialogTitle>
               {approveTarget && approveTarget.length > 1
-                ? "Approve Group Booking"
-                : "Approve Appointment"}
+                ? "Confirm Group Booking"
+                : "Confirm Appointment"}
             </DialogTitle>
             <DialogDescription>
-              Confirm approval for {approveTarget?.length ?? 0} appointment
+              Confirm {approveTarget?.length ?? 0} appointment
               {(approveTarget?.length ?? 0) === 1 ? "" : "s"}. This reserves the
               selected time {approveTarget && approveTarget.length > 1 ? "slots" : "slot"}.
             </DialogDescription>
@@ -1138,8 +1306,8 @@ export function Appointment() {
               {isApproving
                 ? "Approving..."
                 : approveTarget && approveTarget.length > 1
-                  ? "Approve All"
-                  : "Approve"}
+                  ? "Confirm All"
+                  : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1311,6 +1479,15 @@ export function Appointment() {
           appointment={rescheduleAppointment}
         />
       )}
+
+      <AppointmentAddOnDialog
+        appointment={addOnAppointment}
+        open={addOnAppointment !== null}
+        onOpenChange={(open) => {
+          if (!open) setAddOnAppointment(null);
+        }}
+        onUpdated={handleAddOnUpdated}
+      />
 
     </div>
   );

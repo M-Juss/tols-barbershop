@@ -315,7 +315,7 @@ class AnalyticsReportService
             'completed' => 0,
             'cancelled' => 0,
             'no_show' => 0,
-            'approved' => 0,
+            'confirmed' => 0,
             'pending' => 0,
             'total' => 0,
         ]);
@@ -354,7 +354,7 @@ class AnalyticsReportService
             ->values();
 
         $peakHours = $appointments
-            ->whereIn('status', ['completed', 'approved'])
+            ->whereIn('status', ['completed', 'confirmed'])
             ->groupBy(fn ($a) => substr((string) $a->appointment_time, 0, 5))
             ->map(fn ($appts, $hour) => ['hour' => $hour, 'count' => $appts->count()])
             ->sortBy('hour')
@@ -477,24 +477,23 @@ class AnalyticsReportService
     {
         $totalCustomers = $this->countDistinctCustomers($from, $endExclusive);
 
-        $createdInRange = DB::table('users')
-            ->where('role', 'customer')
+        $createdInRange = DB::table('booking_customers')
             ->where('created_at', '>=', $from)
             ->where('created_at', '<', $endExclusive)
             ->count();
 
         $previousCustomerIds = DB::table('appointments')
-            ->whereNotNull('user_id')
+            ->whereNotNull('booking_customer_id')
             ->where('appointment_date', '<', $from)
             ->distinct()
-            ->pluck('user_id');
+            ->pluck('booking_customer_id');
 
         $returningInRange = DB::table('appointments')
-            ->whereNotNull('user_id')
+            ->whereNotNull('booking_customer_id')
             ->where('appointment_date', '>=', $from)
             ->where('appointment_date', '<', $endExclusive)
             ->distinct()
-            ->pluck('user_id')
+            ->pluck('booking_customer_id')
             ->filter(fn ($id) => $previousCustomerIds->contains($id))
             ->count();
 
@@ -522,6 +521,7 @@ class AnalyticsReportService
 
         $avgByService = DB::table('appointment_feedback')
             ->join('appointments', 'appointments.id', '=', 'appointment_feedback.appointment_id')
+            ->whereNull('appointment_feedback.batch_id')
             ->where('appointments.appointment_date', '>=', $from)
             ->where('appointments.appointment_date', '<', $endExclusive)
             ->select('appointments.service_id', DB::raw('AVG(appointment_feedback.rating) as avg_rating'), DB::raw('COUNT(*) as count'))
@@ -590,7 +590,7 @@ class AnalyticsReportService
 
         $peakHour = Appointment::withTrashed()
             ->select('appointment_time', DB::raw('COUNT(*) as count'))
-            ->whereIn('status', ['completed', 'approved'])
+            ->whereIn('status', ['completed', 'confirmed'])
             ->where('appointment_date', '>=', $from)
             ->where('appointment_date', '<', $endExclusive)
             ->groupBy('appointment_time')
@@ -661,7 +661,7 @@ class AnalyticsReportService
             $insights[] = [
                 'label' => 'Customers Served',
                 'value' => (string) $customers,
-                'detail' => 'registered customers in period',
+                'detail' => 'booking customers in period',
             ];
         }
 
@@ -689,11 +689,11 @@ class AnalyticsReportService
     private function countDistinctCustomers(string $from, string $endExclusive): int
     {
         return (int) Appointment::withTrashed()
-            ->whereNotNull('user_id')
+            ->whereNotNull('booking_customer_id')
             ->where('appointment_date', '>=', $from)
             ->where('appointment_date', '<', $endExclusive)
-            ->distinct('user_id')
-            ->count('user_id');
+            ->distinct('booking_customer_id')
+            ->count('booking_customer_id');
     }
 
     private function averageRating(string $from, string $endExclusive): ?float

@@ -24,7 +24,7 @@ import {
   getBookingSettings,
   type Appointment,
   type OccupiedAppointmentSlot,
-} from "@/services/customer/appointment.api";
+} from "@/services/shared/appointment.api";
 import { sanitizeText } from "@/lib/sanitizer";
 import { generateTimeOptions, isTimeSlotUnavailable, formatTime12 } from "@/lib/time-slots";
 import { toast } from "sonner";

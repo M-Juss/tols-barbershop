@@ -26,12 +26,14 @@ class AppointmentResource extends JsonResource
             'id' => $this->id,
 
             'customer' => [
-                'id' => $this->is_walkin ? null : $this->user?->id,
+                'id' => $this->is_walkin ? null : $this->bookingCustomer?->id,
                 'fullname' => $this->resource->customerDisplayName(),
-                'email' => $this->is_walkin ? null : $this->user?->email,
+                'email' => $this->is_walkin
+                    ? null
+                    : ($this->customer_email_snapshot ?? $this->bookingCustomer?->email),
                 'contact_number' => $this->is_walkin
-                    ? ($this->walkin_customer_contact_number ?? $this->user?->contact_number)
-                    : $this->user?->contact_number,
+                    ? $this->walkin_customer_contact_number
+                    : ($this->customer_contact_number_snapshot ?? $this->bookingCustomer?->contact_number),
             ],
 
             'barber' => $barber,
@@ -40,6 +42,15 @@ class AppointmentResource extends JsonResource
                 'id' => $this->service?->id,
                 'name' => $this->service_name_snapshot ?? $this->service?->name,
             ],
+
+            'add_ons' => $this->whenLoaded('addOns', fn () => $this->addOns->map(
+                fn ($addOn): array => [
+                    'id' => $addOn->id,
+                    'add_on_id' => $addOn->service_add_on_id,
+                    'name' => $addOn->name_snapshot ?? $addOn->serviceAddOn?->name,
+                    'price' => $addOn->price,
+                ],
+            )->values()),
 
             'feedback' => $this->whenLoaded('feedback', fn () => [
                 'id' => $this->feedback?->id,
@@ -64,13 +75,25 @@ class AppointmentResource extends JsonResource
             'notes' => $this->notes,
             'cancellation_reason' => $this->cancellation_reason,
 
-            'approved_at' => $this->approved_at,
+            'confirmed_at' => $this->confirmed_at,
             'completed_at' => $this->completed_at,
             'cancelled_at' => $this->cancelled_at,
             'rejected_at' => $this->rejected_at,
 
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'latest_email_delivery' => $this->whenLoaded('emailDeliveries', function () {
+                $delivery = $this->emailDeliveries->sortByDesc('created_at')->first();
+
+                return $delivery ? [
+                    'id' => $delivery->id,
+                    'type' => $delivery->type,
+                    'status' => $delivery->status,
+                    'attempts' => $delivery->attempts,
+                    'sent_at' => $delivery->sent_at,
+                    'failed_at' => $delivery->failed_at,
+                ] : null;
+            }),
         ];
     }
 }

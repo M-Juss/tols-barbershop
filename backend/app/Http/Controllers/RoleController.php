@@ -5,15 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\RoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Models\Role;
-use App\Services\SupportTicketAssignmentService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Support\Facades\DB;
 
 class RoleController extends Controller
 {
     use ApiResponseTrait;
-
-    public function __construct(private readonly SupportTicketAssignmentService $supportTickets) {}
 
     public function index()
     {
@@ -44,12 +41,6 @@ class RoleController extends Controller
             $role->update($request->safe()->only('name'));
             $role->modules()->sync($request->input('module_ids', []));
 
-            if (! $role->modules()->where('key', 'customer-service')->exists()) {
-                $role->users()
-                    ->where('role', 'admin')
-                    ->pluck('users.id')
-                    ->each(fn (int $adminId) => $this->supportTickets->requeueAssignedTickets($adminId));
-            }
         }, 3);
 
         $role->load('modules');
@@ -73,10 +64,6 @@ class RoleController extends Controller
         }
 
         DB::transaction(function () use ($role): void {
-            $role->users()
-                ->where('role', 'admin')
-                ->pluck('users.id')
-                ->each(fn (int $adminId) => $this->supportTickets->requeueAssignedTickets($adminId));
             $role->users()->where('role', 'admin')->update(['role_id' => null]);
             $role->delete();
         }, 3);

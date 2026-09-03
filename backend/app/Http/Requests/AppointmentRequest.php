@@ -35,9 +35,9 @@ class AppointmentRequest extends FormRequest
         $isWalkin = (bool) $this->boolean('is_walkin');
 
         return [
-            'user_id' => [
+            'booking_customer_id' => [
                 'required_without:is_walkin',
-                'exists:users,id',
+                'exists:booking_customers,id',
             ],
 
             'service_id' => [
@@ -127,7 +127,7 @@ class AppointmentRequest extends FormRequest
                 'nullable',
                 Rule::in([
                     'pending',
-                    'approved',
+                    'confirmed',
                     'completed',
                     'cancelled',
                     'no_show',

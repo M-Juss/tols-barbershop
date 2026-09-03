@@ -15,7 +15,7 @@ import {
   createAppointment,
   type Barber,
   type Service,
-} from "@/services/customer/appointment.api";
+} from "@/services/shared/appointment.api";
 import {
   walkinSchema,
   type WalkinSchemaValues,

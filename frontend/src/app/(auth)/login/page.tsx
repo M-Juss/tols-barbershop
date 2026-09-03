@@ -64,9 +64,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
           <LoginForm />
           <p className="text-xs mt-4">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-accent hover:underline">
-              Create one.
+            Booking a haircut?{" "}
+            <Link href="/booking" className="text-accent hover:underline">
+              Book online.
             </Link>
           </p>
           <nav

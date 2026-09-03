@@ -1,13 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { TablePagination } from "@/components/common/TablePagination";
 import {
   type AppointmentHistoryStatusFilter,
   useAppointmentHistory,
 } from "@/hooks/useAppointmentHistory";
-import { type AppointmentStatus } from "@/services/customer/appointment.api";
+import {
+  resendBookingEmail,
+  type AppointmentStatus,
+} from "@/services/shared/appointment.api";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/common/SectionCard";
 import { AppointmentStatusBadge } from "@/components/common/AppointmentStatusBadge";
@@ -38,7 +43,13 @@ type Row = {
   time: string;
   status: AppointmentStatus;
   price: number;
+  addOns: { name: string | null; price: number | string }[];
   cancellation_reason: string | null;
+  emailDelivery: {
+    id: number;
+    type: string;
+    status: "pending" | "sent" | "failed";
+  } | null;
 };
 
 function formatDate(date: string): string {
@@ -62,7 +73,9 @@ export function Historical() {
     setStatus,
     setPage,
     getPageHref,
+    refresh,
   } = useAppointmentHistory();
+  const [resendingDeliveryId, setResendingDeliveryId] = useState<number | null>(null);
   const rows = useMemo<Row[]>(
     () =>
       appointments.map((appointment) => ({
@@ -74,17 +87,32 @@ export function Historical() {
         time: formatTime12(appointment.appointment_time),
         status: appointment.status,
         price: Number(appointment.price) || 0,
+        addOns: appointment.add_ons ?? [],
         cancellation_reason: appointment.cancellation_reason,
+        emailDelivery: appointment.latest_email_delivery ?? null,
       })),
     [appointments],
   );
 
+  async function resendEmail(deliveryId: number) {
+    setResendingDeliveryId(deliveryId);
+    try {
+      await resendBookingEmail(deliveryId);
+      toast.success("Email sent successfully.");
+      await refresh();
+    } catch (resendError) {
+      toast.error(resendError instanceof Error ? resendError.message : "Could not resend the email.");
+    } finally {
+      setResendingDeliveryId(null);
+    }
+  }
+
   return (
     <div className="w-full h-full bg-slate-100 p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Appointment History</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Schedule History</h1>
         <p className="text-gray-500 mt-1">
-          Appointments are ordered by last updated, latest first
+          Final outcomes are ordered by last updated, latest first
         </p>
       </div>
 
@@ -93,7 +121,7 @@ export function Historical() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by appointment ID, customer, service, barber"
+            placeholder="Search by reference, customer, service, barber"
             className="w-full sm:w-3/4"
             maxLength={100}
           />
@@ -104,12 +132,10 @@ export function Historical() {
             }
           >
             <SelectTrigger className="w-full sm:w-1/4 border-gray-300">
-              <SelectValue placeholder="All Status" />
+              <SelectValue placeholder="All Final Statuses" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="all">All Final Statuses</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
@@ -151,9 +177,32 @@ export function Historical() {
                 <p className="text-xs text-gray-500">
                   {row.service} · {row.barber}
                 </p>
+                {row.addOns.length > 0 ? (
+                  <p className="text-xs text-red-600">
+                    Add-ons: {row.addOns.map((addOn) => addOn.name).filter(Boolean).join(", ")}
+                  </p>
+                ) : null}
                 <p className="text-xs text-gray-500">
                   {row.date} · {row.time}
                 </p>
+                {row.emailDelivery ? (
+                  <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                    <span className="capitalize">
+                      {row.emailDelivery.type.replaceAll("_", " ")} email: {row.emailDelivery.status}
+                    </span>
+                    {row.emailDelivery.status === "failed" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={resendingDeliveryId === row.emailDelivery.id}
+                        onClick={() => void resendEmail(row.emailDelivery!.id)}
+                      >
+                        {resendingDeliveryId === row.emailDelivery.id ? "Resending..." : "Resend"}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between pt-1 border-t border-gray-100">
                   <span className="text-sm font-semibold text-gray-900">
                     ₱{row.price.toFixed(2)}
@@ -173,7 +222,7 @@ export function Historical() {
           <Table>
             <TableHeader className="bg-gray-50">
               <TableRow>
-                <TableHead>Appointment ID</TableHead>
+                <TableHead>Reference</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Service</TableHead>
                 <TableHead>Barber</TableHead>
@@ -181,18 +230,19 @@ export function Historical() {
                 <TableHead>Time</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Email</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell className="text-gray-500" colSpan={8}>
+                  <TableCell className="text-gray-500" colSpan={9}>
                     Loading appointments...
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="text-gray-500" colSpan={8}>
+                  <TableCell className="text-gray-500" colSpan={9}>
                     No appointments found.
                   </TableCell>
                 </TableRow>
@@ -201,7 +251,14 @@ export function Historical() {
                   <TableRow key={row.id} className="group relative">
                     <TableCell>{formatBookingId(row.id)}</TableCell>
                     <TableCell>{row.customer}</TableCell>
-                    <TableCell>{row.service}</TableCell>
+                    <TableCell>
+                      <div>{row.service}</div>
+                      {row.addOns.length > 0 ? (
+                        <div className="mt-1 text-xs text-red-600">
+                          + {row.addOns.map((addOn) => addOn.name).filter(Boolean).join(", ")}
+                        </div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>{row.barber}</TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.time}</TableCell>
@@ -215,6 +272,28 @@ export function Historical() {
                           </div>
                         ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {row.emailDelivery ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs capitalize text-gray-500">
+                            {row.emailDelivery.type.replaceAll("_", " ")} · {row.emailDelivery.status}
+                          </span>
+                          {row.emailDelivery.status === "failed" ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={resendingDeliveryId === row.emailDelivery.id}
+                              onClick={() => void resendEmail(row.emailDelivery!.id)}
+                            >
+                              {resendingDeliveryId === row.emailDelivery.id ? "Resending..." : "Resend"}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not sent</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

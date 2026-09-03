@@ -87,7 +87,7 @@ export interface ReportAppointments {
   average_per_day: number;
   online_count: number;
   walkin_count: number;
-  by_date: { date: string; completed: number; cancelled: number; no_show: number; approved: number; pending: number; total: number }[];
+  by_date: { date: string; completed: number; cancelled: number; no_show: number; confirmed: number; pending: number; total: number }[];
   by_day_of_week: { day: string; day_index: number; completed: number; cancelled: number; no_show: number; total: number }[];
   peak_hours: { hour: string; count: number }[];
   comparison: ReportAppointments | null;

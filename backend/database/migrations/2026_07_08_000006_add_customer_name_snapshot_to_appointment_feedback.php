@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('appointment_feedback', function (Blueprint $table) {
-            $table->string('customer_name_snapshot', 255)->nullable()->after('user_id');
+            $table->string('customer_name_snapshot', 255)->nullable()->after('comment');
         });
     }
 

@@ -7,6 +7,7 @@ import {
   StickyNote,
   User,
   Users,
+  RotateCcw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,14 +23,16 @@ import { formatBookingId } from "@/lib/booking";
 import { sanitizeString, sanitizeText } from "@/lib/sanitizer";
 import { formatTime12 } from "@/lib/time-slots";
 
-import type { Appointment } from "@/services/customer/appointment.api";
+import type { Appointment } from "@/services/shared/appointment.api";
 
 type PendingAppointmentDetailDialogProps = {
   appointments: Appointment[] | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApprove: () => void;
+  onConfirm: () => void;
   onReject: () => void;
+  onResendEmail?: (deliveryId: number) => void;
+  resendingEmail?: boolean;
   disabled?: boolean;
 };
 
@@ -54,8 +57,10 @@ export function PendingAppointmentDetailDialog({
   appointments,
   open,
   onOpenChange,
-  onApprove,
+  onConfirm,
   onReject,
+  onResendEmail,
+  resendingEmail = false,
   disabled = false,
 }: PendingAppointmentDetailDialogProps) {
   if (!appointments?.length) return null;
@@ -122,6 +127,31 @@ export function PendingAppointmentDetailDialog({
                 </p>
               </div>
             </section>
+
+            {first.latest_email_delivery ? (
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Latest customer email
+                  </p>
+                  <p className="mt-1 text-sm font-medium capitalize text-gray-900">
+                    {first.latest_email_delivery.type.replaceAll("_", " ")} · {first.latest_email_delivery.status}
+                  </p>
+                </div>
+                {first.latest_email_delivery.status === "failed" && onResendEmail ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={resendingEmail}
+                    onClick={() => onResendEmail(first.latest_email_delivery!.id)}
+                  >
+                    <RotateCcw className="size-4" />
+                    {resendingEmail ? "Resending..." : "Resend email"}
+                  </Button>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="rounded-xl border border-gray-200 p-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -227,11 +257,11 @@ export function PendingAppointmentDetailDialog({
             {isGroup && sortedAppointments.length > 1 ? "Reject all" : "Reject"}
           </Button>
           <Button
-            onClick={onApprove}
+            onClick={onConfirm}
             disabled={disabled}
             className="bg-green-600 text-white hover:bg-green-700"
           >
-            {isGroup && sortedAppointments.length > 1 ? "Approve all" : "Approve"}
+            {isGroup && sortedAppointments.length > 1 ? "Confirm all" : "Confirm"}
           </Button>
         </DialogFooter>
       </DialogContent>

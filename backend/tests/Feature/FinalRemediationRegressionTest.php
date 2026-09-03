@@ -1,11 +1,10 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\Module;
-use App\Models\Notification;
 use App\Models\Role;
 use App\Models\Service;
-use App\Models\SupportTicket;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,16 +39,25 @@ function finalRegressionService(array $attributes = []): Service
     ], $attributes));
 }
 
-function finalRegressionAppointmentPayload(User $customer, User $barber, Service $service): array
+function finalRegressionCustomer(array $attributes = []): BookingCustomer
+{
+    return BookingCustomer::create(array_merge([
+        'fullname' => fake()->name(),
+        'email' => fake()->unique()->safeEmail(),
+        'contact_number' => '09'.fake()->numerify('#########'),
+    ], $attributes));
+}
+
+function finalRegressionAppointmentPayload(BookingCustomer $customer, User $barber, Service $service): array
 {
     return [
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
         'appointment_time' => '09:00',
         'price' => 300,
-        'status' => 'approved',
+        'status' => 'confirmed',
     ];
 }
 
@@ -62,7 +70,7 @@ test('admin appointment and walk-in creation require the exact matching module',
     $walkinRole->modules()->attach($walkinModule);
     $appointmentAdmin = finalRegressionUser('admin', ['role_id' => $appointmentRole->id]);
     $walkinAdmin = finalRegressionUser('admin', ['role_id' => $walkinRole->id]);
-    $customer = finalRegressionUser('customer');
+    $customer = finalRegressionCustomer();
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService();
     $scheduled = finalRegressionAppointmentPayload($customer, $barber, $service);
@@ -85,35 +93,27 @@ test('admin appointment and walk-in creation require the exact matching module',
     $this->postJson('/api/v1/appointments', $walkin)->assertCreated();
 });
 
-test('staff cannot create scheduled bookings for inactive customers or non-customer accounts', function () {
+test('staff cannot create scheduled bookings for unknown booking customers', function () {
     $manager = finalRegressionUser('manager');
-    $inactiveCustomer = finalRegressionUser('customer', ['is_active' => false]);
-    $admin = finalRegressionUser('admin');
+    $customer = finalRegressionCustomer();
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService();
     Sanctum::actingAs($manager);
 
-    foreach ([$inactiveCustomer, $admin] as $owner) {
-        $this->postJson(
-            '/api/v1/appointments',
-            finalRegressionAppointmentPayload($owner, $barber, $service),
-        )->assertUnprocessable()->assertJsonValidationErrors('user_id');
-    }
-
-    $this->postJson('/api/v1/appointments/batch', [
-        'barber_user_id' => $barber->id,
-        'appointment_date' => '2026-07-17',
-        'appointments' => [],
-    ])->assertForbidden();
+    $payload = finalRegressionAppointmentPayload($customer, $barber, $service);
+    $payload['booking_customer_id'] = 999999;
+    $this->postJson('/api/v1/appointments', $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('booking_customer_id');
 });
 
 test('availability exposes occupied durations and only staff can exclude a rescheduled appointment', function () {
-    $customer = finalRegressionUser('customer');
+    $customer = finalRegressionCustomer();
     $manager = finalRegressionUser('manager');
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService(['duration' => 90]);
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
@@ -125,12 +125,11 @@ test('availability exposes occupied durations and only staff can exclude a resch
     ]);
     $url = "/api/v1/appointments/available-slots?barber_id={$barber->id}&date=2026-07-17";
 
-    Sanctum::actingAs($customer);
-    $this->getJson($url)
+    $publicUrl = "/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-07-17";
+    $this->getJson($publicUrl)
         ->assertOk()
         ->assertJsonPath('data.0.appointment_time', '09:00')
         ->assertJsonPath('data.0.duration_minutes', 90);
-    $this->getJson($url."&ignore_appointment_id={$appointment->id}")->assertForbidden();
 
     Sanctum::actingAs($manager);
     $this->getJson($url."&ignore_appointment_id={$appointment->id}")
@@ -140,10 +139,11 @@ test('availability exposes occupied durations and only staff can exclude a resch
 
 test('shop-local date boundaries are used instead of the UTC calendar date', function () {
     Carbon::setTestNow('2026-07-16 23:30:00 UTC');
-    $customer = finalRegressionUser('customer');
+    $customer = finalRegressionCustomer();
+    $manager = finalRegressionUser('manager');
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService();
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($manager);
 
     $payload = finalRegressionAppointmentPayload($customer, $barber, $service);
     $payload['appointment_date'] = '2026-07-16';
@@ -156,18 +156,18 @@ test('shop-local date boundaries are used instead of the UTC calendar date', fun
 
 test('closed dates reject active bookings accept true query values and remain unique', function () {
     $manager = finalRegressionUser('manager');
-    $customer = finalRegressionUser('customer');
+    $customer = finalRegressionCustomer();
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService();
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-17',
         'appointment_time' => '09:00',
         'duration_minutes' => 60,
         'price' => 300,
-        'status' => 'approved',
+        'status' => 'confirmed',
         'active_slot_key' => "{$barber->id}|2026-07-17|09:00",
     ]);
     Sanctum::actingAs($manager);
@@ -199,64 +199,6 @@ test('closed dates reject active bookings accept true query values and remain un
     $this->getJson('/api/v1/closed-dates?all=true')->assertOk();
 });
 
-test('removing customer-service access requeues assigned tickets', function () {
-    $supportModule = Module::firstOrCreate(['key' => 'customer-service'], ['name' => 'Customer Service']);
-    $managementModule = Module::create(['key' => 'management', 'name' => 'Management']);
-    $role = Role::create(['name' => 'Support Admin']);
-    $role->modules()->attach([$supportModule->id, $managementModule->id]);
-    $manager = finalRegressionUser('manager');
-    $admin = finalRegressionUser('admin', ['role_id' => $role->id]);
-    $customer = finalRegressionUser('customer');
-    $ticket = SupportTicket::create([
-        'customer_id' => $customer->id,
-        'assigned_to_id' => $admin->id,
-        'assigned_staff_name_snapshot' => $admin->fullname,
-        'status' => 'active',
-        'claimed_at' => now(),
-        'last_message_at' => now(),
-    ]);
-    Sanctum::actingAs($manager);
-
-    $this->putJson("/api/v1/roles/{$role->id}", [
-        'name' => $role->name,
-        'module_ids' => [$managementModule->id],
-    ])->assertOk();
-
-    $ticket->refresh();
-    expect($ticket->status)->toBe('waiting')
-        ->and($ticket->assigned_to_id)->toBeNull()
-        ->and($ticket->claimed_at)->toBeNull();
-    expect(Notification::where('user_id', $customer->id)->where('type', 'ticket_requeued')->count())->toBe(1);
-});
-
-test('support histories provide stable pagination for staff and customers', function () {
-    $manager = finalRegressionUser('manager');
-    $customer = finalRegressionUser('customer');
-    foreach (range(1, 3) as $index) {
-        SupportTicket::create([
-            'customer_id' => $customer->id,
-            'assigned_to_id' => $manager->id,
-            'status' => 'resolved',
-            'resolved_at' => now()->subMinutes($index),
-        ]);
-    }
-
-    Sanctum::actingAs($manager);
-    $staffFirst = $this->getJson('/api/v1/support/queue?view=history&per_page=1&history_page=1')
-        ->assertOk()
-        ->assertJsonPath('data.history_has_more', true);
-    $staffSecond = $this->getJson('/api/v1/support/queue?view=history&per_page=1&history_page=2')
-        ->assertOk();
-    expect($staffFirst->json('data.resolved.0.id'))->not->toBe($staffSecond->json('data.resolved.0.id'));
-
-    Sanctum::actingAs($customer);
-    $this->getJson('/api/v1/support/tickets?page=2&per_page=1')
-        ->assertOk()
-        ->assertJsonPath('data.meta.current_page', 2)
-        ->assertJsonPath('data.meta.last_page', 3)
-        ->assertJsonCount(1, 'data.tickets');
-});
-
 test('management admins can reopen inactive services and barbers', function () {
     $managementModule = Module::create(['key' => 'management', 'name' => 'Management']);
     $appointmentModule = Module::create(['key' => 'appointment', 'name' => 'Appointments']);
@@ -284,11 +226,11 @@ test('management admins can reopen inactive services and barbers', function () {
 
 test('archived appointments remain in business analytics', function () {
     $manager = finalRegressionUser('manager');
-    $customer = finalRegressionUser('customer');
+    $customer = finalRegressionCustomer();
     $barber = finalRegressionUser('barber');
     $service = finalRegressionService();
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => '2026-07-16',

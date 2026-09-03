@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\Service;
 use App\Models\User;
 use Carbon\Carbon;
@@ -23,7 +24,11 @@ function createAnalyticsReportContext(): array
 {
     return [
         'manager' => User::factory()->create(['role' => 'manager']),
-        'customer' => User::factory()->create(['role' => 'customer']),
+        'customer' => BookingCustomer::create([
+            'fullname' => 'Analytics Customer',
+            'email' => fake()->unique()->safeEmail(),
+            'contact_number' => '09171234567',
+        ]),
         'barber' => User::factory()->create(['role' => 'barber']),
         'service' => Service::create([
             'name' => 'Classic Haircut',
@@ -43,7 +48,7 @@ function createAnalyticsReportAppointment(
     string $time = '10:00',
 ): Appointment {
     return Appointment::create([
-        'user_id' => $context['customer']->id,
+        'booking_customer_id' => $context['customer']->id,
         'service_id' => $context['service']->id,
         'barber_user_id' => $context['barber']->id,
         'appointment_date' => $date,
@@ -100,14 +105,14 @@ test('rating distribution follows appointment dates', function () {
     DB::table('appointment_feedback')->insert([
         [
             'appointment_id' => $inRange->id,
-            'user_id' => $context['customer']->id,
+            'booking_customer_id' => $context['customer']->id,
             'rating' => 5,
             'created_at' => '2026-06-01 10:00:00',
             'updated_at' => '2026-06-01 10:00:00',
         ],
         [
             'appointment_id' => $outOfRange->id,
-            'user_id' => $context['customer']->id,
+            'booking_customer_id' => $context['customer']->id,
             'rating' => 1,
             'created_at' => '2026-07-14 10:00:00',
             'updated_at' => '2026-07-14 10:00:00',

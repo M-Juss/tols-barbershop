@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('appointment_add_ons', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('appointment_id')->constrained('appointments')->cascadeOnDelete();
+            $table->foreignId('service_add_on_id')->constrained('service_add_ons')->restrictOnDelete();
+            $table->string('name_snapshot', 255);
+            $table->decimal('price', 10, 2);
+            $table->timestamps();
+
+            $table->unique(['appointment_id', 'service_add_on_id']);
+            $table->index(['appointment_id', 'created_at']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('appointment_add_ons');
+    }
+};

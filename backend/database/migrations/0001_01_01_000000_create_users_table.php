@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('fullname');
             $table->string('contact_number', 11);
             $table->string('email')->unique();
-            $table->string('role')->default('customer');
+            $table->string('role');
             $table->string('password');
             $table->boolean('is_active')->default(true);
             $table->timestamp('email_verified_at')->nullable();

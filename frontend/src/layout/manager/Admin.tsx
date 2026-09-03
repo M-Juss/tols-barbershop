@@ -668,7 +668,6 @@ export function Admin() {
                     { label: "Overview", keys: ["dashboard"] },
                     { label: "Operations", keys: ["appointment", "walkin", "history"] },
                     { label: "Administration", keys: ["management"] },
-                    { label: "Relations", keys: ["crm", "customer-service"] },
                     { label: "Analytics", keys: ["reports", "feedback"] },
                   ];
                   const moduleByKey = Object.fromEntries(

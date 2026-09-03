@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -76,7 +75,6 @@ class VerifyProductionConfiguration extends Command
             ['Session and cache tables exist', $this->sessionAndCacheTablesExist()],
             ['Storage directories are writable', is_writable(storage_path()) && is_writable(base_path('bootstrap/cache'))],
             ['Laravel configuration is cached', app()->configurationIsCached()],
-            ['Every-minute application task is registered', $this->schedulerTaskIsRegistered()],
         ];
 
         $this->table(
@@ -131,11 +129,5 @@ class VerifyProductionConfiguration extends Command
         } catch (Throwable) {
             return false;
         }
-    }
-
-    private function schedulerTaskIsRegistered(): bool
-    {
-        return collect(app(Schedule::class)->events())
-            ->contains(fn ($event): bool => str_contains((string) $event->command, 'support:cancel-inactive'));
     }
 }

@@ -10,18 +10,16 @@ import {
   type Appointment,
   type AppointmentHistoryMeta,
   type AppointmentStatus,
-} from "@/services/customer/appointment.api";
+} from "@/services/shared/appointment.api";
 
 export type AppointmentHistoryStatusFilter =
   | "all"
   | "walkin"
-  | AppointmentStatus;
+  | Extract<AppointmentStatus, "completed" | "cancelled" | "rejected" | "no_show">;
 
 const validStatuses = new Set<AppointmentHistoryStatusFilter>([
   "all",
   "walkin",
-  "pending",
-  "approved",
   "completed",
   "cancelled",
   "rejected",
@@ -170,5 +168,6 @@ export function useAppointmentHistory() {
     page,
     setPage,
     getPageHref,
+    refresh: () => fetchHistory(undefined, true),
   };
 }

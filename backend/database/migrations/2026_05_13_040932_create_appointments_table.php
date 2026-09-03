@@ -15,8 +15,6 @@ return new class extends Migration
             $table->id();
 
             // Relationships
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-
             $table->foreignId('service_id')->constrained()->onDelete('cascade');
 
             $table->foreignId('barber_user_id')
@@ -34,7 +32,7 @@ return new class extends Migration
             // Status
             $table->enum('status', [
                 'pending',
-                'approved',
+                'confirmed',
                 'completed',
                 'cancelled',
                 'no_show',
@@ -46,7 +44,7 @@ return new class extends Migration
             $table->text('cancellation_reason')->nullable();
 
             // Status Timestamps
-            $table->timestamp('approved_at')->nullable();
+            $table->timestamp('confirmed_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamp('cancelled_at')->nullable();
 

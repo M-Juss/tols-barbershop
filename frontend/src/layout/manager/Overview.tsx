@@ -138,7 +138,7 @@ function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
       return "bg-green-100 border-green-200";
-    case "approved":
+    case "confirmed":
       return "bg-blue-100 border-blue-200";
     case "pending":
       return "bg-yellow-100 border-yellow-200";
@@ -666,11 +666,11 @@ export function Overview() {
           iconClassName="text-green-500"
         />
         <StatCard
-          label="Approved"
+          label="Confirmed"
           value={
             weeklyStatsLoading
               ? "..."
-              : (weeklyStats?.approved_appointments ?? 0).toString()
+              : (weeklyStats?.confirmed_appointments ?? 0).toString()
           }
           icon={CheckCircle2}
           iconContainerClassName="bg-blue-100"

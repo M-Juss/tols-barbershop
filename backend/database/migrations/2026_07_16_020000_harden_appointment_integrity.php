@@ -11,14 +11,14 @@ return new class extends Migration
     {
         $hasDuplicateActiveSlots = DB::table('appointments')
             ->select(['barber_user_id', 'appointment_date', 'appointment_time'])
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', ['pending', 'confirmed'])
             ->groupBy('barber_user_id', 'appointment_date', 'appointment_time')
             ->havingRaw('COUNT(*) > 1')
             ->exists();
 
         if ($hasDuplicateActiveSlots) {
             throw new RuntimeException(
-                'Duplicate pending or approved appointment start times must be resolved before this migration can run.',
+                'Duplicate pending or confirmed appointment start times must be resolved before this migration can run.',
             );
         }
 
@@ -39,7 +39,7 @@ return new class extends Migration
         });
 
         DB::table('appointments')
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', ['pending', 'confirmed'])
             ->orderBy('id')
             ->chunkById(500, function ($appointments): void {
                 foreach ($appointments as $appointment) {

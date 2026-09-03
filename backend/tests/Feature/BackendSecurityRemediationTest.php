@@ -1,20 +1,17 @@
 <?php
 
-use App\Models\Appointment;
 use App\Models\ClosedDates;
 use App\Models\Module;
 use App\Models\PushSubscription;
 use App\Models\Role;
 use App\Models\Service;
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\Sanctum;
 
@@ -91,7 +88,6 @@ test('admin page APIs carry their matching module middleware', function (string 
     'reports' => ['GET', '/api/v1/analytics/revenue', 'reports'],
     'feedback' => ['GET', '/api/v1/feedback', 'feedback'],
     'customers' => ['GET', '/api/v1/customers', 'crm'],
-    'customer service' => ['GET', '/api/v1/support/queue', 'customer-service'],
 ]);
 
 test('admin and barber endpoints cannot target users from another role', function () {
@@ -134,17 +130,16 @@ test('staff image uploads are rejected', function () {
     $this->assertDatabaseMissing('users', ['email' => 'image-barber@example.test']);
 });
 
-test('profile email changes require the current password and require customer reverification', function () {
-    Notification::fake();
-
-    $customer = User::factory()->create([
+test('staff profile email changes require the current password', function () {
+    $staff = User::factory()->create([
+        'role' => 'manager',
         'email' => 'current-profile@example.test',
         'password' => 'old-password',
     ]);
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($staff);
 
     $profile = [
-        'fullname' => 'Profile Customer',
+        'fullname' => 'Profile Manager',
         'email' => 'new-profile@example.test',
         'contact_number' => '09123456789',
     ];
@@ -165,29 +160,28 @@ test('profile email changes require the current password and require customer re
     ])->assertOk()
         ->assertJsonPath('data.email', 'new-profile@example.test');
 
-    $customer->refresh();
-    expect($customer->email)->toBe('new-profile@example.test')
-        ->and($customer->email_verified_at)->toBeNull();
-    Notification::assertSentTo($customer, VerifyEmail::class);
+    expect($staff->fresh()->email)->toBe('new-profile@example.test');
 });
 
-test('profile updates keep a customer verified when the email is unchanged', function () {
-    $customer = User::factory()->create([
+test('staff profile updates preserve the email when unchanged', function () {
+    $staff = User::factory()->create([
+        'role' => 'manager',
         'email' => 'unchanged-profile@example.test',
     ]);
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($staff);
 
     $this->putJson('/api/v1/change-information', [
-        'fullname' => 'Updated Customer',
+        'fullname' => 'Updated Manager',
         'email' => 'UNCHANGED-PROFILE@example.test',
         'contact_number' => '09123456789',
     ])->assertOk();
 
-    expect($customer->fresh()->email_verified_at)->not->toBeNull();
+    expect($staff->fresh()->email)->toBe('unchanged-profile@example.test');
 });
 
-test('profile email updates return a specific error for an email already in the system', function (bool $deactivated) {
-    $customer = User::factory()->create([
+test('staff profile email updates return a specific error for an email already in the system', function (bool $deactivated) {
+    $staff = User::factory()->create([
+        'role' => 'manager',
         'email' => 'profile-owner@example.test',
         'password' => 'current-password',
     ]);
@@ -201,12 +195,12 @@ test('profile email updates return a specific error for an email already in the 
         $existing->delete();
     }
 
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($staff);
 
     $this->putJson('/api/v1/change-information', [
-        'fullname' => $customer->fullname,
+        'fullname' => $staff->fullname,
         'email' => $existing->email,
-        'contact_number' => $customer->contact_number,
+        'contact_number' => $staff->contact_number,
         'current_password' => 'current-password',
     ])
         ->assertUnprocessable()
@@ -215,7 +209,7 @@ test('profile email updates return a specific error for an email already in the 
             'This email address is already registered and cannot be used.',
         );
 
-    expect($customer->fresh()->email)->toBe('profile-owner@example.test');
+    expect($staff->fresh()->email)->toBe('profile-owner@example.test');
 })->with([
     'active email' => false,
     'deactivated email' => true,
@@ -287,63 +281,6 @@ test('deleting a service archives it without removing its record', function () {
     ]);
 });
 
-test('registration returns the same generic result for an existing email', function () {
-    Notification::fake();
-    $existing = User::factory()->create(['email' => 'existing-registration@example.test']);
-
-    $response = $this->postJson('/api/v1/register', [
-        'fullname' => 'Existing Customer',
-        'contact_number' => '09123456789',
-        'email' => 'EXISTING-REGISTRATION@example.test',
-        'password' => 'aaaaaa',
-        'password_confirmation' => 'aaaaaa',
-        'terms_accepted' => true,
-        'privacy_acknowledged' => true,
-    ]);
-
-    $response
-        ->assertCreated()
-        ->assertJsonPath('message', 'If registration can be completed, check your inbox for a verification email.')
-        ->assertJsonPath('data.email', 'existing-registration@example.test');
-    expect(User::where('email', $existing->email)->count())->toBe(1);
-});
-
-test('customers do not receive barber private contact fields', function () {
-    $customer = User::factory()->create(['role' => 'customer']);
-    $barber = User::factory()->create([
-        'role' => 'barber',
-        'email' => 'private-barber@example.test',
-        'contact_number' => '09123456789',
-    ]);
-    $service = Service::create([
-        'name' => 'Privacy Cut',
-        'description' => 'Privacy resource test',
-        'duration' => 30,
-        'price' => 200,
-        'is_active' => true,
-    ]);
-    Appointment::create([
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => now()->addDay()->toDateString(),
-        'appointment_time' => '09:00',
-        'duration_minutes' => 30,
-        'price' => 200,
-        'status' => 'pending',
-    ]);
-
-    Sanctum::actingAs($customer);
-    $this->getJson('/api/v1/barber')
-        ->assertOk()
-        ->assertJsonMissingPath('data.0.email')
-        ->assertJsonMissingPath('data.0.contact_number');
-    $this->getJson('/api/v1/appointments')
-        ->assertOk()
-        ->assertJsonMissingPath('data.0.barber.email')
-        ->assertJsonMissingPath('data.0.barber.contact_number');
-});
-
 test('deactivating an admin revokes sessions tokens and push subscriptions', function () {
     config()->set('session.driver', 'database');
     $manager = User::factory()->create(['role' => 'manager']);
@@ -396,27 +333,14 @@ test('staff notification recipients are active and module scoped', function () {
         ->toEqualCanonicalizing([$manager->id, $allowedAdmin->id]);
 });
 
-test('customers cannot request removed closed date history', function () {
+test('barbers cannot request removed closed date history', function () {
     ClosedDates::create([
         'date_closed' => now()->addWeek()->toDateString(),
         'reason' => 'Maintenance',
         'is_removed' => true,
     ]);
-    $customer = User::factory()->create(['role' => 'customer']);
-    Sanctum::actingAs($customer);
+    $barber = User::factory()->create(['role' => 'barber']);
+    Sanctum::actingAs($barber);
 
     $this->getJson('/api/v1/closed-dates?all=1')->assertForbidden();
-});
-
-test('support text is sanitized before storage', function () {
-    $customer = User::factory()->create(['role' => 'customer']);
-    Sanctum::actingAs($customer);
-
-    $this->postJson('/api/v1/support/tickets', [
-        'category' => '<b>general_inquiry</b>',
-        'message' => '<script>alert(1)</script>Hello',
-    ])->assertCreated();
-
-    $this->assertDatabaseHas('support_tickets', ['category' => 'general_inquiry']);
-    $this->assertDatabaseHas('support_messages', ['message' => 'alert(1)Hello']);
 });
