@@ -22,7 +22,7 @@ import {
 import { useRateLimit } from "@/hooks/useRateLimit";
 import { sanitizeText } from "@/lib/sanitizer";
 import { cn } from "@/lib/utils";
-import { generateTimeOptions, isTimeSlotUnavailable } from "@/lib/time-slots";
+import { formatTime12, generateTimeOptions, isTimeSlotUnavailable } from "@/lib/time-slots";
 import {
   getPublicBookingBootstrap,
   getPublicUnavailableSlots,
@@ -391,9 +391,43 @@ export function NewAppointmentForm() {
       </Dialog>
 
       <Dialog open={result !== null} onOpenChange={(open) => !open && resetForm()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-green-600" />Booking Request Submitted</DialogTitle><DialogDescription>Your request is pending staff confirmation. We also sent the reference to your verified email.</DialogDescription></DialogHeader>
           <div className="rounded-xl bg-slate-100 p-5 text-center"><p className="text-xs font-medium uppercase tracking-wider text-gray-500">Booking Reference</p><p className="mt-2 text-2xl font-bold tracking-wide text-primary">{result?.reference}</p><p className="mt-2 text-sm font-medium capitalize text-amber-700">{result?.status}</p></div>
+          <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 text-sm">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Detail label="Name" value={fullname} />
+              <Detail label="Email" value={email.toLowerCase()} />
+              <Detail label="Contact" value={contactNumber} />
+              <Detail label="Barber" value={barberName} />
+              <Detail label="Date" value={formatBookingDate(pendingPayload?.appointment_date)} />
+              <Detail label="Appointments" value={String(pendingPayload?.appointments.length ?? 0)} />
+            </div>
+            <div className="border-t border-gray-200 pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Schedule Details</p>
+              <div className="space-y-2">
+                {pendingPayload?.appointments.map((slot, index) => {
+                  const service = services.find((item) => item.id === slot.service_id);
+                  const customerName = slot.customer_name || fullname;
+                  return (
+                    <div key={index} className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900">{pendingPayload.mode === "group" ? customerName : service?.name ?? "Service"}</p>
+                        {pendingPayload.mode === "group" ? <p className="text-gray-600">{service?.name ?? "Service"}</p> : null}
+                        <p className="text-xs text-gray-500">{formatTime12(slot.appointment_time)}</p>
+                      </div>
+                      <p className="shrink-0 font-medium text-gray-900">₱{Number(service?.price ?? 0).toFixed(2)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {pendingPayload?.notes ? <Detail label="Notes" value={pendingPayload.notes} /> : null}
+            <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+              <span className="font-semibold text-gray-900">Total</span>
+              <span className="font-semibold text-gray-900">₱{total.toFixed(2)}</span>
+            </div>
+          </div>
           <DialogFooter><Button type="button" className="w-full" onClick={resetForm}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -407,6 +441,15 @@ function SummaryRow({ name, description, price }: { name: string; description?: 
 
 function Detail({ label, value }: { label: string; value: string }) {
   return <div className="flex justify-between gap-4"><span className="text-gray-500">{label}</span><span className="text-right font-medium text-gray-900">{value}</span></div>;
+}
+
+function formatBookingDate(value: string | undefined): string {
+  if (!value) return "—";
+  return new Date(value + "T00:00:00").toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function ConsentRow({ checked, onChange, children }: { checked: boolean; onChange: (checked: boolean) => void; children: React.ReactNode }) {
