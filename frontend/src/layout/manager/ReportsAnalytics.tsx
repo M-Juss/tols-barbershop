@@ -338,7 +338,21 @@ function ReportsAnalyticsInner() {
         </div>
 
         <div className="mb-4 rounded-lg border border-gray-100 bg-white p-0.5 shadow-sm">
-          <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:gap-1">
+          <div className="sm:hidden">
+            <Select value={section} onValueChange={(value) => handleSectionChange(value as ReportSection)}>
+              <SelectTrigger className="w-full border-0 bg-transparent shadow-none focus:ring-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SECTIONS.map((s) => (
+                  <SelectItem key={s.key} value={s.key}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="hidden w-full gap-1 sm:flex">
             {SECTIONS.map((s) => (
               <button
                 key={s.key}
@@ -923,7 +937,7 @@ function CustomersPanel({ data }: { data: ReportCustomers }) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
           <h3 className="text-base font-bold text-gray-900">Returning Customer Rate</h3>
           <p className="mt-1 text-sm leading-relaxed text-gray-500">
-            The percentage of registered customers with an appointment this period who also had an appointment before it.
+            The percentage of verified-email booking customers in this period who also had an earlier appointment.
           </p>
           <div className="mt-5 flex items-end justify-between gap-4">
             <div className="text-3xl font-bold text-blue-600">{data.repeat_rate}%</div>

@@ -3,92 +3,9 @@
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Password;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
-
-test('customer registration accepts a simple six character password', function () {
-    Notification::fake();
-
-    $this->postJson('/api/v1/register', [
-        'fullname' => 'Simple Password',
-        'contact_number' => '09123456789',
-        'email' => 'simple-registration@example.test',
-        'password' => 'aaaaaa',
-        'password_confirmation' => 'aaaaaa',
-        'terms_accepted' => true,
-        'privacy_acknowledged' => true,
-    ])->assertCreated();
-
-    $user = User::where('email', 'simple-registration@example.test')->firstOrFail();
-
-    expect(Hash::check('aaaaaa', $user->password))->toBeTrue();
-});
-
-test('customer registration rejects passwords shorter than six characters', function () {
-    Notification::fake();
-
-    $this->postJson('/api/v1/register', [
-        'fullname' => 'Short Password',
-        'contact_number' => '09123456789',
-        'email' => 'short-registration@example.test',
-        'password' => 'aaaaa',
-        'password_confirmation' => 'aaaaa',
-        'terms_accepted' => true,
-        'privacy_acknowledged' => true,
-    ])->assertUnprocessable()
-        ->assertJsonValidationErrors('password');
-});
-
-test('customer password reset accepts a simple six character password', function () {
-    $user = User::factory()->create([
-        'email' => 'simple-reset@example.test',
-        'password' => 'old-password',
-    ]);
-    $token = Password::createToken($user);
-
-    $this->postJson('/api/v1/reset-password', [
-        'email' => $user->email,
-        'token' => $token,
-        'password' => 'aaaaa',
-        'password_confirmation' => 'aaaaa',
-    ])->assertUnprocessable()
-        ->assertJsonValidationErrors('password');
-
-    $this->postJson('/api/v1/reset-password', [
-        'email' => $user->email,
-        'token' => $token,
-        'password' => 'aaaaaa',
-        'password_confirmation' => 'aaaaaa',
-    ])->assertOk();
-
-    expect(Hash::check('aaaaaa', $user->fresh()->password))->toBeTrue();
-});
-
-test('customer password change accepts a simple six character password', function () {
-    $customer = User::factory()->create([
-        'role' => 'customer',
-        'password' => 'old-password',
-    ]);
-    Sanctum::actingAs($customer);
-
-    $this->putJson('/api/v1/change-password', [
-        'current_password' => 'old-password',
-        'password' => 'aaaaa',
-        'password_confirmation' => 'aaaaa',
-    ])->assertUnprocessable()
-        ->assertJsonValidationErrors('password');
-
-    $this->putJson('/api/v1/change-password', [
-        'current_password' => 'old-password',
-        'password' => 'aaaaaa',
-        'password_confirmation' => 'aaaaaa',
-    ])->assertOk();
-
-    expect(Hash::check('aaaaaa', $customer->fresh()->password))->toBeTrue();
-});
 
 test('manager can create and update an admin with a simple six character password', function () {
     $manager = User::factory()->create(['role' => 'manager']);

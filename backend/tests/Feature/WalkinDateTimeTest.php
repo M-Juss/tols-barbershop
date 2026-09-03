@@ -216,13 +216,12 @@ test('walk-in stores submitted date and time not server time', function () {
     expect(substr((string) $appointment->appointment_time, 0, 5))->toBe('09:00');
     expect($appointment->status)->toBe('completed');
     expect($appointment->is_walkin)->toBeTrue();
-    expect($appointment->user_id)->toBeNull();
 });
 
-test('walk-in with arbitrary time does not affect customer availability', function () {
+test('walk-in with arbitrary time does not affect staff availability', function () {
     $setup = walkinDateTimeSetup();
-    $customer = walkinDateTimeUser('customer');
-    Sanctum::actingAs($setup['admin']);
+    $manager = walkinDateTimeUser('manager');
+    Sanctum::actingAs($manager);
 
     $this->postJson('/api/v1/appointments', walkinDateTimePayload(
         $setup['barber'],
@@ -231,7 +230,7 @@ test('walk-in with arbitrary time does not affect customer availability', functi
         '14:00',
     ))->assertCreated();
 
-    Sanctum::actingAs($customer);
+    Sanctum::actingAs($manager);
     $response = $this->getJson('/api/v1/appointments/available-slots?barber_id='.$setup['barber']->id.'&date=2026-07-16');
     $response->assertOk();
 

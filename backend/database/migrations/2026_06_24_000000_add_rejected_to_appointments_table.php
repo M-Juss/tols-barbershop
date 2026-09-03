@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('appointments', function (Blueprint $table) {
-            $table->enum('status', ['pending', 'approved', 'completed', 'cancelled', 'no_show', 'rejected'])
+            $table->enum('status', ['pending', 'confirmed', 'completed', 'cancelled', 'no_show', 'rejected'])
                 ->default('pending')
                 ->change();
             $table->timestamp('rejected_at')->nullable()->after('cancelled_at');
@@ -20,7 +20,7 @@ return new class extends Migration
     {
         Schema::table('appointments', function (Blueprint $table) {
             $table->dropColumn('rejected_at');
-            $table->enum('status', ['pending', 'approved', 'completed', 'cancelled', 'no_show'])
+            $table->enum('status', ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'])
                 ->default('pending')
                 ->change();
         });

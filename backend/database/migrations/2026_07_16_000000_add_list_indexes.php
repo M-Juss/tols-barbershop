@@ -9,11 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         $this->addIndexIfMissing('appointments', ['created_at', 'id'], 'appointments_created_id_list_index');
-        $this->addIndexIfMissing('appointments', ['user_id', 'created_at', 'id'], 'appointments_user_created_id_list_index');
         $this->addIndexIfMissing('appointments', ['status', 'created_at', 'id'], 'appointments_status_created_id_list_index');
         $this->addIndexIfMissing('appointments', ['is_walkin', 'created_at', 'id'], 'appointments_walkin_created_id_list_index');
         $this->addIndexIfMissing('users', ['role', 'fullname', 'id'], 'users_role_fullname_id_list_index');
-        $this->addIndexIfMissing('appointments', ['user_id', 'status', 'appointment_date'], 'appointments_user_status_date_list_index');
         $this->addIndexIfMissing('appointment_feedback', ['created_at', 'id'], 'appointment_feedback_created_id_list_index');
         $this->addIndexIfMissing('appointment_feedback', ['rating', 'created_at', 'id'], 'appointment_feedback_rating_created_id_list_index');
         $this->addIndexIfMissing('appointment_feedback', ['is_featured', 'created_at', 'id'], 'appointment_feedback_featured_created_id_list_index');
@@ -21,15 +19,12 @@ return new class extends Migration
 
     public function down(): void
     {
-        $this->addIndexIfMissing('appointments', ['user_id'], 'appointments_user_id_index');
         $this->dropIndexIfExists('appointment_feedback', 'appointment_feedback_featured_created_id_list_index');
         $this->dropIndexIfExists('appointment_feedback', 'appointment_feedback_rating_created_id_list_index');
         $this->dropIndexIfExists('appointment_feedback', 'appointment_feedback_created_id_list_index');
-        $this->dropIndexIfExists('appointments', 'appointments_user_status_date_list_index');
         $this->dropIndexIfExists('users', 'users_role_fullname_id_list_index');
         $this->dropIndexIfExists('appointments', 'appointments_walkin_created_id_list_index');
         $this->dropIndexIfExists('appointments', 'appointments_status_created_id_list_index');
-        $this->dropIndexIfExists('appointments', 'appointments_user_created_id_list_index');
         $this->dropIndexIfExists('appointments', 'appointments_created_id_list_index');
     }
 

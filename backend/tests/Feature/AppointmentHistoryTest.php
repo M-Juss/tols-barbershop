@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\Module;
 use App\Models\Role;
 use App\Models\Service;
@@ -24,13 +25,15 @@ function createAppointmentHistoryContext(): array
             'role_id' => $historyRole->id,
         ]),
         'manager' => User::factory()->create(['role' => 'manager']),
-        'customer' => User::factory()->create([
-            'role' => 'customer',
+        'customer' => BookingCustomer::create([
             'fullname' => 'History Customer',
+            'email' => 'history@example.test',
+            'contact_number' => '09123456789',
         ]),
-        'other_customer' => User::factory()->create([
-            'role' => 'customer',
+        'other_customer' => BookingCustomer::create([
             'fullname' => 'Other Customer',
+            'email' => 'other-history@example.test',
+            'contact_number' => '09987654321',
         ]),
         'barber' => User::factory()->create([
             'role' => 'barber',
@@ -49,7 +52,7 @@ function createAppointmentHistoryContext(): array
 function createAppointmentHistoryRecord(array $context, array $attributes = []): Appointment
 {
     return Appointment::forceCreate(array_merge([
-        'user_id' => $context['customer']->id,
+        'booking_customer_id' => $context['customer']->id,
         'service_id' => $context['service']->id,
         'barber_user_id' => $context['barber']->id,
         'appointment_date' => '2026-07-15',
@@ -63,36 +66,28 @@ function createAppointmentHistoryRecord(array $context, array $attributes = []):
     ], $attributes));
 }
 
-test('appointment history requires authentication and permits only supported roles', function () {
+test('appointment history requires authentication and permits only staff roles', function () {
     $context = createAppointmentHistoryContext();
 
     $this->getJson('/api/v1/appointments/history')->assertUnauthorized();
 
     Sanctum::actingAs($context['barber']);
     $this->getJson('/api/v1/appointments/history')->assertForbidden();
-
-    foreach (['admin', 'manager', 'customer'] as $role) {
+    foreach (['admin', 'manager'] as $role) {
         Sanctum::actingAs($context[$role]);
         $this->getJson('/api/v1/appointments/history')->assertOk();
     }
 });
 
-test('customer appointment history is isolated even when a display reference collides', function () {
+test('staff appointment history finds colliding display references', function () {
     $context = createAppointmentHistoryContext();
     $own = createAppointmentHistoryRecord($context, ['id' => 1]);
     $other = createAppointmentHistoryRecord($context, [
         'id' => 6001,
-        'user_id' => $context['other_customer']->id,
+        'booking_customer_id' => $context['other_customer']->id,
     ]);
 
     expect(DisplayId::booking($own->id))->toBe(DisplayId::booking($other->id));
-
-    Sanctum::actingAs($context['customer']);
-
-    $this->getJson('/api/v1/appointments/history?search='.DisplayId::booking($own->id))
-        ->assertOk()
-        ->assertJsonPath('data.meta.total', 1)
-        ->assertJsonPath('data.appointments.0.id', $own->id);
 
     Sanctum::actingAs($context['manager']);
 
@@ -119,12 +114,12 @@ test('appointment history paginates without overlap and orders by last updated',
     $fourth = createAppointmentHistoryRecord($context, [
         'appointment_date' => '2026-07-14',
         'appointment_time' => '19:00',
-        'status' => 'approved',
+        'status' => 'no_show',
     ]);
     $third = createAppointmentHistoryRecord($context, [
         'appointment_date' => '2026-07-16',
         'appointment_time' => '09:00',
-        'status' => 'pending',
+        'status' => 'cancelled',
     ]);
     Sanctum::actingAs($context['manager']);
 
@@ -149,9 +144,8 @@ test('appointment history paginates without overlap and orders by last updated',
 
 test('appointment history filters status and walk-in records', function () {
     $context = createAppointmentHistoryContext();
-    createAppointmentHistoryRecord($context, ['status' => 'pending']);
+    $pending = createAppointmentHistoryRecord($context, ['status' => 'pending']);
     $walkin = createAppointmentHistoryRecord($context, [
-        'user_id' => null,
         'status' => 'completed',
         'is_walkin' => true,
         'walkin_customer_name' => 'Walk-in Guest',
@@ -168,9 +162,16 @@ test('appointment history filters status and walk-in records', function () {
         ->assertJsonPath('data.meta.total', 1)
         ->assertJsonPath('data.appointments.0.id', $walkin->id);
 
+    $allHistory = $this->getJson('/api/v1/appointments/history')
+        ->assertOk()
+        ->assertJsonPath('data.meta.total', 2);
+
+    expect(collect($allHistory->json('data.appointments'))->pluck('id')->all())
+        ->not->toContain($pending->id);
+
     $this->getJson('/api/v1/appointments/history?is_walkin=0')
         ->assertOk()
-        ->assertJsonPath('data.meta.total', 2)
+        ->assertJsonPath('data.meta.total', 1)
         ->assertJsonMissing(['id' => $walkin->id])
         ->assertJsonFragment(['id' => $completed->id]);
 });
@@ -178,10 +179,11 @@ test('appointment history filters status and walk-in records', function () {
 test('appointment history searches raw ids, snapshots, and related names', function () {
     $context = createAppointmentHistoryContext();
     $appointment = createAppointmentHistoryRecord($context, [
+        'id' => 424242,
         'customer_name_snapshot' => 'Snapshot Needle',
     ]);
     createAppointmentHistoryRecord($context, [
-        'user_id' => $context['other_customer']->id,
+        'booking_customer_id' => $context['other_customer']->id,
         'service_name_snapshot' => 'Different Service',
         'barber_name_snapshot' => 'Different Barber',
     ]);
@@ -230,10 +232,8 @@ test('list indexes are available', function () {
 
     expect($appointmentIndexes)
         ->toContain('appointments_created_id_list_index')
-        ->toContain('appointments_user_created_id_list_index')
         ->toContain('appointments_status_created_id_list_index')
-        ->toContain('appointments_walkin_created_id_list_index')
-        ->toContain('appointments_user_status_date_list_index');
+        ->toContain('appointments_walkin_created_id_list_index');
     expect($userIndexes)->toContain('users_role_fullname_id_list_index');
     expect($feedbackIndexes)
         ->toContain('appointment_feedback_created_id_list_index')

@@ -39,24 +39,16 @@ class LoginController extends Controller
                 ], 403);
             }
 
-            if (! in_array($user->role, ['admin', 'manager', 'customer'], true)) {
+            if (! in_array($user->role, ['admin', 'manager'], true)) {
                 $this->forceLogout($request);
 
-                return $this->error('This role does not have application access.', [], 403);
-            }
-
-            if ($user->role === 'customer' && ! $user->hasVerifiedEmail()) {
-                $this->forceLogout($request);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please verify your email address before logging in.',
-                    'code' => 'EMAIL_UNVERIFIED',
-                ], 403);
+                return $this->error('Only staff accounts can access Admin Login.', [], 403);
             }
 
             Auth::guard('web')->login($user);
-            $request->session()->regenerate();
+            if ($request->hasSession()) {
+                $request->session()->regenerate();
+            }
 
             return $this->success('Login successful', [
                 'user' => new UserResource($user),
@@ -90,7 +82,9 @@ class LoginController extends Controller
     private function forceLogout(LoginRequest $request): void
     {
         Auth::guard('web')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
     }
 }

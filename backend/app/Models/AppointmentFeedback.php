@@ -11,7 +11,8 @@ class AppointmentFeedback extends Model
 
     protected $fillable = [
         'appointment_id',
-        'user_id',
+        'batch_id',
+        'booking_customer_id',
         'rating',
         'comment',
         'is_featured',
@@ -28,8 +29,8 @@ class AppointmentFeedback extends Model
         return $this->belongsTo(Appointment::class)->withTrashed();
     }
 
-    public function user(): BelongsTo
+    public function bookingCustomer(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(BookingCustomer::class);
     }
 }

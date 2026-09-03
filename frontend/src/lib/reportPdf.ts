@@ -456,7 +456,7 @@ export async function downloadAnalyticsReportPdf(
     ratingCount > 0
       ? `Customers provided an average rating of ${kpi.average_rating.toFixed(1)}/5 from ${formatCount(ratingCount)} submitted ratings.`
       : "No customer ratings were submitted for appointments in this period.";
-  const summary = `From ${formatDate(kpi.date_range.from)} through ${formatDate(kpi.date_range.to)}, TOL Barbershop generated ${formatCurrency(kpi.total_revenue)} from ${formatCount(kpi.completed_appointments)} completed appointments, serving ${formatCount(kpi.total_customers)} registered customers. The completion rate was ${formatPercent(kpi.completion_rate)}. ${ratingSentence}`;
+  const summary = `From ${formatDate(kpi.date_range.from)} through ${formatDate(kpi.date_range.to)}, TOL Barbershop generated ${formatCurrency(kpi.total_revenue)} from ${formatCount(kpi.completed_appointments)} completed appointments, serving ${formatCount(kpi.total_customers)} booking customers. The completion rate was ${formatPercent(kpi.completion_rate)}. ${ratingSentence}`;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...SLATE);

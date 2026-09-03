@@ -58,7 +58,7 @@ function hasAuthRoleCookie(): boolean {
 function redirectFromProtectedRoute(reason: string): void {
   if (
     typeof window !== "undefined" &&
-    /^\/(admin|manager|customer)(?:\/|$)/.test(window.location.pathname)
+    /^\/(admin|manager)(?:\/|$)/.test(window.location.pathname)
   ) {
     window.location.replace(
       reason === "account_disabled" ? "/login?account_disabled=1" : "/login",

@@ -18,7 +18,7 @@ class PublicBootstrapController extends Controller
     public function __invoke(): JsonResponse
     {
         $featuredFeedback = AppointmentFeedback::query()
-            ->with(['user:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
+            ->with(['bookingCustomer:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
             ->where('is_featured', true)
             ->latest()
             ->limit(5)
@@ -26,7 +26,7 @@ class PublicBootstrapController extends Controller
 
         $feedback = $featuredFeedback->isEmpty()
             ? AppointmentFeedback::query()
-                ->with(['user:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
+                ->with(['bookingCustomer:id,fullname', 'appointment.service:id,name', 'appointment.barber:id,fullname'])
                 ->where('rating', 5)
                 ->whereNotNull('comment')
                 ->where('comment', '<>', '')

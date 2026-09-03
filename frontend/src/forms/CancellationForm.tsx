@@ -20,7 +20,7 @@ import {
   cancellationReasonSchema,
   CancellationReasonSchemaFormValues,
 } from "@/validations/appointment.validation";
-import { type Appointment } from "@/services/customer/appointment.api";
+import { type Appointment } from "@/services/shared/appointment.api";
 import { sanitizeText } from "@/lib/sanitizer";
 import { formatTime12 } from "@/lib/time-slots";
 import { toast } from "sonner";

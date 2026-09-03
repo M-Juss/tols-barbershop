@@ -9,7 +9,6 @@ use App\Http\Resources\ClosedDatesResource;
 use App\Models\Appointment;
 use App\Models\ClosedDateActivity;
 use App\Models\ClosedDates;
-use App\Models\Notification;
 use App\Models\User;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
@@ -188,7 +187,7 @@ class ClosedDatesController extends Controller
                 $conflictCount = Appointment::query()
                     ->where('appointment_date', '>=', $validated['date_closed'])
                     ->where('appointment_date', '<', $nextDate)
-                    ->whereIn('status', ['pending', 'approved'])
+                    ->whereIn('status', ['pending', 'confirmed'])
                     ->when(
                         $scope === 'barber',
                         fn ($query) => $query->where('barber_user_id', $barber->id),
@@ -239,8 +238,6 @@ class ClosedDatesController extends Controller
                     'actor_name_snapshot' => $actor?->fullname,
                 ]);
 
-                $this->notifyCustomers($closedDate, $actor?->id);
-
                 return $closedDate;
             }, 3);
         } catch (ValidationException $exception) {
@@ -256,7 +253,6 @@ class ClosedDatesController extends Controller
         }
 
         EntityChange::dispatch('closed_dates');
-        EntityChange::dispatch('notifications');
 
         return $this->created(
             'Closed date created successfully',
@@ -318,7 +314,7 @@ class ClosedDatesController extends Controller
         $count = Appointment::query()
             ->where('appointment_date', '>=', $validated['date'])
             ->where('appointment_date', '<', $nextDate)
-            ->whereIn('status', ['pending', 'approved'])
+            ->whereIn('status', ['pending', 'confirmed'])
             ->when(
                 $scope === 'barber',
                 fn ($query) => $query->where('barber_user_id', $validated['barber_user_id']),
@@ -326,58 +322,5 @@ class ClosedDatesController extends Controller
             ->count();
 
         return $this->success('Conflict check completed', ['count' => $count]);
-    }
-
-    private function notifyCustomers(ClosedDates $closedDate, ?int $actorUserId): void
-    {
-        $timezone = (string) config('app.shop_timezone', 'Asia/Manila');
-        $date = Carbon::createFromFormat('!Y-m-d', $closedDate->date_closed, $timezone);
-        $isToday = $date->isSameDay(Carbon::today($timezone));
-        $formattedDate = $date->format('F j, Y');
-
-        if ($closedDate->closure_scope === 'barber') {
-            $title = 'Barber Day Off';
-            $message = $isToday
-                ? "Barber {$closedDate->barber_name_snapshot} is not working today. Please select another available barber."
-                : "Barber {$closedDate->barber_name_snapshot} will not be working on {$formattedDate}. Please select another available barber.";
-        } else {
-            $title = 'Shop Closure';
-            $message = $isToday
-                ? 'The shop is closed today. Please choose another available date.'
-                : "The shop will be closed on {$formattedDate}. Please choose another available date.";
-        }
-
-        $payload = json_encode([
-            'closed_date_id' => $closedDate->id,
-            'closure_scope' => $closedDate->closure_scope,
-            'date_closed' => $closedDate->date_closed,
-            'barber_user_id' => $closedDate->barber_user_id,
-            'barber_name' => $closedDate->barber_name_snapshot,
-        ], JSON_THROW_ON_ERROR);
-        $now = now();
-
-        User::query()
-            ->where('role', 'customer')
-            ->where('is_active', true)
-            ->select('id')
-            ->chunkById(500, function ($customers) use (
-                $actorUserId,
-                $message,
-                $now,
-                $payload,
-                $title,
-            ): void {
-                Notification::insert($customers->map(fn (User $customer): array => [
-                    'user_id' => $customer->id,
-                    'type' => 'closed_date',
-                    'title' => $title,
-                    'message' => $message,
-                    'payload' => $payload,
-                    'is_read' => false,
-                    'created_by_user_id' => $actorUserId,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ])->all());
-            });
     }
 }

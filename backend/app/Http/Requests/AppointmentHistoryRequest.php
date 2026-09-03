@@ -12,7 +12,7 @@ class AppointmentHistoryRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return in_array($this->user()?->role, ['customer', 'admin', 'manager'], true);
+        return in_array($this->user()?->role, ['admin', 'manager'], true);
     }
 
     protected function prepareForValidation(): void
@@ -24,7 +24,7 @@ class AppointmentHistoryRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', 'string', Rule::in(['pending', 'approved', 'completed', 'cancelled', 'rejected', 'no_show'])],
+            'status' => ['nullable', 'string', Rule::in(['completed', 'cancelled', 'rejected', 'no_show'])],
             'is_walkin' => ['nullable', 'boolean'],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:50'],

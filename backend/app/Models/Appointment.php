@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -12,7 +13,7 @@ class Appointment extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'user_id',
+        'booking_customer_id',
         'service_id',
         'barber_user_id',
         'appointment_date',
@@ -26,13 +27,15 @@ class Appointment extends Model
         'walkin_customer_contact_number',
         'notes',
         'cancellation_reason',
-        'approved_at',
+        'confirmed_at',
         'completed_at',
         'cancelled_at',
         'rejected_at',
         'batch_id',
         'customer_name',
         'customer_name_snapshot',
+        'customer_email_snapshot',
+        'customer_contact_number_snapshot',
         'service_name_snapshot',
         'barber_name_snapshot',
         'archived_by_user_id',
@@ -41,7 +44,7 @@ class Appointment extends Model
     protected $casts = [
         'appointment_date' => 'date',
         'appointment_time' => 'string',
-        'approved_at' => 'datetime',
+        'confirmed_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'rejected_at' => 'datetime',
@@ -63,7 +66,7 @@ class Appointment extends Model
             return $this->walkin_customer_name;
         }
 
-        return $this->user?->fullname;
+        return $this->bookingCustomer?->fullname;
     }
 
     /*
@@ -71,9 +74,9 @@ class Appointment extends Model
     | Relationships
     |--------------------------------------------------------------------------
     */
-    public function user(): BelongsTo
+    public function bookingCustomer(): BelongsTo
     {
-        return $this->belongsTo(User::class)->withTrashed(); // ROLE IS CUSTOMER
+        return $this->belongsTo(BookingCustomer::class);
     }
 
     public function service(): BelongsTo
@@ -81,13 +84,23 @@ class Appointment extends Model
         return $this->belongsTo(Service::class, 'service_id');
     }
 
+    public function addOns(): HasMany
+    {
+        return $this->hasMany(AppointmentAddOn::class)->orderBy('name_snapshot');
+    }
+
     public function barber(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'barber_user_id')->withTrashed(); // ROLE IS BARBER
+        return $this->belongsTo(User::class, 'barber_user_id')->withTrashed();
     }
 
     public function feedback(): HasOne
     {
         return $this->hasOne(AppointmentFeedback::class);
+    }
+
+    public function emailDeliveries(): HasMany
+    {
+        return $this->hasMany(BookingEmailDelivery::class);
     }
 }

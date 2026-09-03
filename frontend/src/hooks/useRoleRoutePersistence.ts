@@ -7,7 +7,7 @@ function keyFor(basePath: string): string {
   return `last_route:${basePath}`;
 }
 
-export function useRoleRoutePersistence(basePath: "/admin" | "/manager" | "/customer") {
+export function useRoleRoutePersistence(basePath: "/admin" | "/manager") {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -28,7 +28,7 @@ export function useRoleRoutePersistence(basePath: "/admin" | "/manager" | "/cust
   }, [basePath, pathname, router]);
 }
 
-export function getSavedRoleRoute(basePath: "/admin" | "/manager" | "/customer"): string | null {
+export function getSavedRoleRoute(basePath: "/admin" | "/manager"): string | null {
   const savedPath = localStorage.getItem(keyFor(basePath));
   if (!savedPath || !savedPath.startsWith(basePath)) return null;
   return savedPath;

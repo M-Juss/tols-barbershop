@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
@@ -24,8 +25,8 @@ test('simultaneous booking attempts create only one active appointment', functio
 
     Artisan::call('migrate:fresh', ['--force' => true]);
 
-    $firstCustomer = User::factory()->create(['role' => 'customer']);
-    $secondCustomer = User::factory()->create(['role' => 'customer']);
+    $firstCustomer = BookingCustomer::create(['fullname' => 'First Customer', 'email' => 'first@example.test', 'contact_number' => '09170000000']);
+    $secondCustomer = BookingCustomer::create(['fullname' => 'Second Customer', 'email' => 'second@example.test', 'contact_number' => '09170000001']);
     $barber = User::factory()->create(['role' => 'barber']);
     $service = Service::create([
         'name' => 'Concurrency Haircut',
@@ -76,7 +77,7 @@ test('simultaneous booking attempts create only one active appointment', functio
                     );
 
                     Appointment::create([
-                        'user_id' => $customerId,
+                        'booking_customer_id' => $customerId,
                         'service_id' => $service->id,
                         'barber_user_id' => $barber->id,
                         'appointment_date' => $date,

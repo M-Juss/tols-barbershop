@@ -2,10 +2,9 @@
 
 use App\Models\Appointment;
 use App\Models\AppointmentFeedback;
-use App\Models\Notification;
+use App\Models\BookingCustomer;
 use App\Models\Service;
 use App\Models\User;
-use App\Support\DisplayId;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -22,11 +21,16 @@ function createFeedbackTestUser(string $role, string $email): User
         'is_active' => true,
     ]);
 
-    if ($role === 'customer') {
-        $user->markEmailAsVerified();
-    }
-
     return $user;
+}
+
+function createFeedbackTestCustomer(string $email): BookingCustomer
+{
+    return BookingCustomer::create([
+        'fullname' => 'Customer User',
+        'contact_number' => '09170000000',
+        'email' => $email,
+    ]);
 }
 
 function createFeedbackTestService(): Service
@@ -40,105 +44,13 @@ function createFeedbackTestService(): Service
     ]);
 }
 
-test('marking an appointment completed creates a feedback request notification', function () {
-    $customer = createFeedbackTestUser('customer', 'feedback-customer@example.test');
-    $barber = createFeedbackTestUser('barber', 'feedback-barber@example.test');
-    $manager = createFeedbackTestUser('manager', 'feedback-manager@example.test');
-    $service = createFeedbackTestService();
-
-    $appointment = Appointment::create([
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => now()->subDay()->toDateString(),
-        'appointment_time' => '10:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'approved',
-    ]);
-
-    Sanctum::actingAs($manager);
-
-    $this->putJson("/api/v1/appointments/{$appointment->id}", [
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => $appointment->appointment_date->toDateString(),
-        'appointment_time' => '10:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'completed',
-        'notes' => null,
-    ])->assertOk();
-
-    $appointment->refresh();
-
-    expect($appointment->status)->toBe('completed');
-    expect($appointment->completed_at)->not->toBeNull();
-
-    $notification = Notification::where('user_id', $customer->id)->first();
-
-    expect($notification)->not->toBeNull();
-    expect($notification->type)->toBe('appointment_completed');
-    expect($notification->payload['appointment_id'])->toBe($appointment->id);
-    expect($notification->payload['booking_id'])->toStartWith('APT-');
-    expect($notification->message)->toContain($notification->payload['booking_id']);
-});
-
-test('customer can submit feedback for their completed appointment', function () {
-    $customer = createFeedbackTestUser('customer', 'submit-feedback-customer@example.test');
-    $barber = createFeedbackTestUser('barber', 'submit-feedback-barber@example.test');
-    $service = createFeedbackTestService();
-
-    $appointment = Appointment::create([
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => now()->toDateString(),
-        'appointment_time' => '11:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'completed',
-        'completed_at' => now(),
-    ]);
-
-    Sanctum::actingAs($customer);
-
-    $this->postJson('/api/v1/appointment-feedback', [
-        'appointment_id' => $appointment->id,
-        'rating' => 5,
-        'comment' => 'Excellent barber service and clean booking experience.',
-    ])
-        ->assertOk()
-        ->assertJsonPath('data.rating', 5)
-        ->assertJsonPath('data.comment', 'Excellent barber service and clean booking experience.');
-
-    $this->assertDatabaseHas('appointment_feedback', [
-        'appointment_id' => $appointment->id,
-        'user_id' => $customer->id,
-        'rating' => 5,
-        'comment' => 'Excellent barber service and clean booking experience.',
-        'is_featured' => false,
-    ]);
-
-    expect(AppointmentFeedback::where('appointment_id', $appointment->id)->count())->toBe(1);
-
-    $this->getJson('/api/v1/public-feedback')
-        ->assertOk()
-        ->assertJsonCount(1, 'data.feedback');
-
-    $this->getJson('/api/v1/featured-feedback')
-        ->assertOk()
-        ->assertJsonCount(0, 'data.feedback');
-});
-
 test('featured five star feedback is available to public landing endpoints', function () {
-    $customer = createFeedbackTestUser('customer', 'historical-feedback-customer@example.test');
+    $customer = createFeedbackTestCustomer('historical-feedback-customer@example.test');
     $barber = createFeedbackTestUser('barber', 'historical-feedback-barber@example.test');
     $service = createFeedbackTestService();
 
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => now()->subDay()->toDateString(),
@@ -151,7 +63,7 @@ test('featured five star feedback is available to public landing endpoints', fun
 
     AppointmentFeedback::create([
         'appointment_id' => $appointment->id,
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'rating' => 5,
         'comment' => 'Legacy public feedback',
         'is_featured' => true,
@@ -168,14 +80,14 @@ test('featured five star feedback is available to public landing endpoints', fun
 });
 
 test('manager can feature submitted feedback for the landing page', function () {
-    $customer = createFeedbackTestUser('customer', 'public-feedback-customer@example.test');
+    $customer = createFeedbackTestCustomer('public-feedback-customer@example.test');
     $customer->update(['fullname' => 'Jamie Marie Rivera']);
     $barber = createFeedbackTestUser('barber', 'public-feedback-barber@example.test');
     $manager = createFeedbackTestUser('manager', 'public-feedback-manager@example.test');
     $service = createFeedbackTestService();
 
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => now()->toDateString(),
@@ -186,15 +98,14 @@ test('manager can feature submitted feedback for the landing page', function () 
         'completed_at' => now(),
     ]);
 
-    Sanctum::actingAs($customer);
-
-    $this->postJson('/api/v1/appointment-feedback', [
+    $feedback = AppointmentFeedback::create([
         'appointment_id' => $appointment->id,
+        'booking_customer_id' => $customer->id,
         'rating' => 5,
         'comment' => 'Excellent service from start to finish.',
-    ])->assertOk();
-
-    $feedback = AppointmentFeedback::where('appointment_id', $appointment->id)->firstOrFail();
+        'is_featured' => false,
+        'customer_name_snapshot' => $customer->fullname,
+    ]);
 
     Sanctum::actingAs($manager);
 
@@ -215,49 +126,8 @@ test('manager can feature submitted feedback for the landing page', function () 
         ->assertJsonPath('data.feedback.0.customer_name', 'Jamie Marie Rivera');
 });
 
-test('appointment status notifications include the appointment reference', function () {
-    $customer = createFeedbackTestUser('customer', 'status-customer@example.test');
-    $barber = createFeedbackTestUser('barber', 'status-barber@example.test');
-    $manager = createFeedbackTestUser('manager', 'status-manager@example.test');
-    $service = createFeedbackTestService();
-
-    $appointment = Appointment::create([
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => now()->addDays(now()->isSaturday() ? 2 : 1)->toDateString(),
-        'appointment_time' => '10:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'pending',
-    ]);
-
-    Sanctum::actingAs($manager);
-
-    $this->putJson("/api/v1/appointments/{$appointment->id}", [
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => $appointment->appointment_date->toDateString(),
-        'appointment_time' => '10:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'approved',
-        'notes' => null,
-    ])->assertOk();
-
-    $notification = Notification::where('user_id', $customer->id)
-        ->where('type', 'appointment_status')
-        ->first();
-
-    expect($notification)->not->toBeNull();
-    expect($notification->title)->toBe('Appointment Confirmed');
-    expect($notification->message)->toContain(DisplayId::booking($appointment->id));
-    expect($notification->message)->not->toContain('is now');
-});
-
 function createFeedbackListRecord(
-    User $customer,
+    BookingCustomer $customer,
     User $barber,
     Service $service,
     int $rating,
@@ -266,7 +136,7 @@ function createFeedbackListRecord(
     string $createdAt,
 ): AppointmentFeedback {
     $appointment = Appointment::create([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $service->id,
         'barber_user_id' => $barber->id,
         'appointment_date' => now()->toDateString(),
@@ -278,7 +148,7 @@ function createFeedbackListRecord(
 
     return AppointmentFeedback::forceCreate([
         'appointment_id' => $appointment->id,
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'rating' => $rating,
         'comment' => $comment,
         'is_featured' => $featured,
@@ -289,7 +159,7 @@ function createFeedbackListRecord(
 }
 
 test('authenticated feedback list paginates and sorts deterministically', function () {
-    $customer = createFeedbackTestUser('customer', 'feedback-list-customer@example.test');
+    $customer = createFeedbackTestCustomer('feedback-list-customer@example.test');
     $barber = createFeedbackTestUser('barber', 'feedback-list-barber@example.test');
     $manager = createFeedbackTestUser('manager', 'feedback-list-manager@example.test');
     $service = createFeedbackTestService();
@@ -320,7 +190,7 @@ test('authenticated feedback list paginates and sorts deterministically', functi
 });
 
 test('authenticated feedback list applies filters and literal wildcard search', function () {
-    $customer = createFeedbackTestUser('customer', 'feedback-filter-customer@example.test');
+    $customer = createFeedbackTestCustomer('feedback-filter-customer@example.test');
     $barber = createFeedbackTestUser('barber', 'feedback-filter-barber@example.test');
     $manager = createFeedbackTestUser('manager', 'feedback-filter-manager@example.test');
     $service = createFeedbackTestService();
@@ -357,45 +227,8 @@ test('authenticated feedback list rejects invalid list parameters', function () 
         ->assertJsonValidationErrors(['rating', 'featured', 'sort', 'dir', 'page', 'per_page']);
 });
 
-test('editing feedback always clears its featured status', function () {
-    $customer = createFeedbackTestUser('customer', 'edit-featured-feedback-customer@example.test');
-    $barber = createFeedbackTestUser('barber', 'edit-featured-feedback-barber@example.test');
-    $service = createFeedbackTestService();
-    $appointment = Appointment::create([
-        'user_id' => $customer->id,
-        'service_id' => $service->id,
-        'barber_user_id' => $barber->id,
-        'appointment_date' => now()->subDay()->toDateString(),
-        'appointment_time' => '10:00',
-        'duration_minutes' => 45,
-        'price' => 250,
-        'status' => 'completed',
-        'completed_at' => now()->subDay(),
-    ]);
-    $feedback = AppointmentFeedback::create([
-        'appointment_id' => $appointment->id,
-        'user_id' => $customer->id,
-        'rating' => 5,
-        'comment' => 'Original featured comment',
-        'is_featured' => true,
-        'customer_name_snapshot' => $customer->fullname,
-    ]);
-    Sanctum::actingAs($customer);
-
-    $this->postJson('/api/v1/appointment-feedback', [
-        'appointment_id' => $appointment->id,
-        'rating' => 4,
-        'comment' => 'Updated customer comment',
-    ])
-        ->assertOk()
-        ->assertJsonPath('data.is_featured', false);
-
-    expect($feedback->fresh()->is_featured)->toBeFalse();
-    expect($feedback->fresh()->comment)->toBe('Updated customer comment');
-});
-
 test('featured feedback minimum and maximum are enforced without partial toggles', function () {
-    $customer = createFeedbackTestUser('customer', 'featured-boundary-customer@example.test');
+    $customer = createFeedbackTestCustomer('featured-boundary-customer@example.test');
     $barber = createFeedbackTestUser('barber', 'featured-boundary-barber@example.test');
     $manager = createFeedbackTestUser('manager', 'featured-boundary-manager@example.test');
     $service = createFeedbackTestService();

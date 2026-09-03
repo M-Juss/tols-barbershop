@@ -2,7 +2,6 @@ import { authFetch } from "@/lib/api";
 
 export type EntityChangeVersions = {
   appointments: string;
-  support_tickets: string;
   notifications: string;
   closed_dates: string;
   barbers: string;

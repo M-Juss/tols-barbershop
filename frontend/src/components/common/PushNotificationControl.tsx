@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 const statusCopy = {
   loading: "Checking notification status...",
-  disabled: "Receive appointment and support updates on this device.",
+  disabled: "Receive appointment updates on this device.",
   enabled: "Notification is enabled on this device.",
   blocked: "Notifications are blocked in your browser settings.",
   unsupported: "This browser does not support push notifications.",
@@ -99,7 +99,7 @@ export function PushNotificationControl({
           </span>
           {isSettingsVariant ? (
             <span className="mt-0.5 block text-sm font-normal text-gray-500">
-              Appointment and support alerts on this device
+              Appointment alerts on this device
             </span>
           ) : null}
         </span>

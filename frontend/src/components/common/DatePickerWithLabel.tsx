@@ -30,6 +30,7 @@ type DatePickerWithLabelProps = {
   disableSundays?: boolean;
   disabled?: boolean;
   barberId?: number;
+  closedDates?: string[];
 };
 
 export function DatePickerWithLabel({
@@ -43,9 +44,11 @@ export function DatePickerWithLabel({
   disableSundays = true,
   disabled = false,
   barberId,
+  closedDates: providedClosedDates,
 }: DatePickerWithLabelProps) {
   const [open, setOpen] = useState(false);
-  const [closedDates, setClosedDates] = useState<string[]>([]);
+  const [fetchedClosedDates, setFetchedClosedDates] = useState<string[]>([]);
+  const closedDates = providedClosedDates ?? fetchedClosedDates;
 
   const selectedDate = date;
 
@@ -62,6 +65,10 @@ export function DatePickerWithLabel({
   }, [maxDaysAhead]);
 
   useEffect(() => {
+    if (providedClosedDates) {
+      return;
+    }
+
     const fetchClosedDates = async () => {
       try {
         const response = await getClosedDates(
@@ -74,7 +81,7 @@ export function DatePickerWithLabel({
           const dates = response.data.map(
             (closedDate) => closedDate.date_closed,
           );
-          setClosedDates(dates);
+          setFetchedClosedDates(dates);
         }
       } catch (error) {
         console.error("Error fetching closed dates:", error);
@@ -82,7 +89,7 @@ export function DatePickerWithLabel({
     };
 
     fetchClosedDates();
-  }, [barberId]);
+  }, [barberId, providedClosedDates]);
 
   function handleDateSelect(nextDate: Date | undefined) {
     if (!nextDate) return;

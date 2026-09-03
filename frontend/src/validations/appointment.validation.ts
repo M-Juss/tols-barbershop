@@ -4,7 +4,7 @@ export const MAX_BOOKING_DAYS_AHEAD = 7;
 
 export const appointmentStatusSchema = z.enum([
   "pending",
-  "approved",
+  "confirmed",
   "completed",
   "cancelled",
   "no_show",
@@ -35,7 +35,7 @@ const bookingDateSchema = z
   });
 
 const baseAppointmentSchema = z.object({
-  user_id: z.number().int().positive(),
+  booking_customer_id: z.number().int().positive(),
   service_id: z.number().int().positive(),
   barber_user_id: z.number().int().positive(),
   appointment_date: bookingDateSchema,
@@ -55,7 +55,7 @@ const baseAppointmentSchema = z.object({
 export const createAppointmentSchema = baseAppointmentSchema;
 
 const updateBaseSchema = z.object({
-  user_id: z.number().int().positive(),
+  booking_customer_id: z.number().int().positive(),
   service_id: z.number().int().positive(),
   barber_user_id: z.number().int().positive(),
   appointment_date: z

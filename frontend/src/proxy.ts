@@ -3,15 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 const roleBasePath: Record<string, string> = {
   admin: "/admin",
   manager: "/manager",
-  customer: "/customer",
 };
 
 const publicPaths = new Set([
   "/",
+  "/booking",
+  "/feedback",
   "/login",
-  "/register",
-  "/verify-email",
-  "/change-registration-email",
   "/forgot-password",
   "/reset-password",
 ]);
@@ -19,19 +17,15 @@ const publicPaths = new Set([
 const guestPaths = new Set([
   "/",
   "/login",
-  "/register",
-  "/verify-email",
-  "/change-registration-email",
   "/forgot-password",
   "/reset-password",
 ]);
 
 function getRequestedBasePath(
   pathname: string,
-): "/admin" | "/manager" | "/customer" | null {
+): "/admin" | "/manager" | null {
   if (pathname.startsWith("/admin")) return "/admin";
   if (pathname.startsWith("/manager")) return "/manager";
-  if (pathname.startsWith("/customer")) return "/customer";
   return null;
 }
 
@@ -73,14 +67,12 @@ export const config = {
   source: "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:js|css|woff|woff2|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico|json|xml|txt|manifest\\.webmanifest)$).*)",
   matcher: [
     "/",
+    "/booking",
+    "/feedback",
     "/login",
-    "/register",
-    "/verify-email",
-    "/change-registration-email",
     "/forgot-password",
     "/reset-password",
     "/admin/:path*",
     "/manager/:path*",
-    "/customer/:path*",
   ],
 };

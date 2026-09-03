@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Appointment;
+use App\Models\BookingCustomer;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,10 +24,10 @@ function createCustomerListContext(): array
     ];
 }
 
-function createCustomerListAppointment(array $context, User $customer, array $attributes = []): Appointment
+function createCustomerListAppointment(array $context, BookingCustomer $customer, array $attributes = []): Appointment
 {
     return Appointment::forceCreate(array_merge([
-        'user_id' => $customer->id,
+        'booking_customer_id' => $customer->id,
         'service_id' => $context['service']->id,
         'barber_user_id' => $context['barber']->id,
         'appointment_date' => now()->toDateString(),
@@ -39,10 +40,10 @@ function createCustomerListAppointment(array $context, User $customer, array $at
 
 test('customer list paginates without overlap and uses deterministic sorting', function () {
     $context = createCustomerListContext();
-    $customers = collect(range(1, 5))->map(fn (int $number) => User::factory()->create([
-        'role' => 'customer',
+    $customers = collect(range(1, 5))->map(fn (int $number) => BookingCustomer::create([
         'fullname' => 'Same Customer',
         'email' => "same-customer-{$number}@example.test",
+        'contact_number' => '0917'.str_pad((string) $number, 7, '0', STR_PAD_LEFT),
     ]));
     Sanctum::actingAs($context['manager']);
 
@@ -66,17 +67,20 @@ test('customer list paginates without overlap and uses deterministic sorting', f
 
 test('customer list filters searches literal wildcards and sorts computed fields', function () {
     $context = createCustomerListContext();
-    $active = User::factory()->create([
-        'role' => 'customer',
+    $active = BookingCustomer::create([
         'fullname' => 'Active Customer',
+        'email' => 'active@example.test',
+        'contact_number' => '09171234567',
     ]);
-    $inactive = User::factory()->create([
-        'role' => 'customer',
+    $inactive = BookingCustomer::create([
         'fullname' => 'Legacy % Customer',
+        'email' => 'inactive@example.test',
+        'contact_number' => '09181234567',
     ]);
-    $frequent = User::factory()->create([
-        'role' => 'customer',
+    $frequent = BookingCustomer::create([
         'fullname' => 'Frequent Customer',
+        'email' => 'frequent@example.test',
+        'contact_number' => '09191234567',
     ]);
     createCustomerListAppointment($context, $inactive, [
         'appointment_date' => now()->subDays(90)->toDateString(),

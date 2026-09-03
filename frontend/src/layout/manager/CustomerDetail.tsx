@@ -53,8 +53,8 @@ function StatusBadge({ status }: { status: string }) {
       label: "Completed",
       className: "bg-green-100 text-green-700",
     },
-    approved: {
-      label: "Approved",
+    confirmed: {
+      label: "Confirmed",
       className: "bg-blue-100 text-blue-700",
     },
     pending: {
@@ -229,7 +229,7 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
-                Customer since {customer.registered_date}
+                First booking record {customer.registered_date}
               </div>
             </div>
           </div>

@@ -7,7 +7,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\Sanctum;
 
@@ -52,28 +51,6 @@ test('different users do not share authenticated read buckets', function () {
     expect($first->key)->toBe("read:{$firstUser->id}:services.index")
         ->and($second->key)->toBe("read:{$secondUser->id}:services.index")
         ->and($first->key)->not->toBe($second->key);
-});
-
-test('read limiter keys use normalized route templates instead of dynamic paths', function () {
-    $user = User::factory()->create();
-
-    $first = resolveNamedLimit(
-        'authenticated-read',
-        'GET',
-        '/api/v1/support/tickets/1/messages',
-        $user,
-    );
-    $second = resolveNamedLimit(
-        'authenticated-read',
-        'GET',
-        '/api/v1/support/tickets/999/messages',
-        $user,
-    );
-
-    expect($first->key)
-        ->toBe("read:{$user->id}:api/v1/support/tickets/{id}/messages")
-        ->and($second->key)->toBe($first->key)
-        ->and($first->maxAttempts)->toBe(600);
 });
 
 test('polling and normal reads use isolated per-route keys', function () {
@@ -128,25 +105,17 @@ test('public reads use isolated normalized global route buckets', function () {
         ->and($gallery->maxAttempts)->toBe(600);
 });
 
-test('write booking support and logout limiters have separate user buckets', function () {
+test('write booking and logout limiters have separate user buckets', function () {
     $user = User::factory()->create();
 
     $write = resolveNamedLimit('authenticated-write', 'POST', '/api/v1/services', $user);
     $booking = resolveNamedLimit('booking-action', 'POST', '/api/v1/appointments', $user);
-    $support = resolveNamedLimit(
-        'support-message',
-        'POST',
-        '/api/v1/support/tickets/1/messages',
-        $user,
-    );
     $logout = resolveNamedLimit('logout', 'POST', '/api/v1/logout', $user);
 
     expect($write->key)->toBe("write:{$user->id}")
         ->and($write->maxAttempts)->toBe(30)
         ->and($booking->key)->toBe("booking:{$user->id}")
         ->and($booking->maxAttempts)->toBe(30)
-        ->and($support->key)->toBe("support-msg:{$user->id}")
-        ->and($support->maxAttempts)->toBe(60)
         ->and($logout->key)->toBe("logout:{$user->id}")
         ->and($logout->maxAttempts)->toBe(30);
 });
@@ -226,21 +195,17 @@ test('failed login and recovery keys follow the target email instead of the prox
     expect($firstLoginRequest->throttleKey())->toBe($secondLoginRequest->throttleKey());
 
     foreach ([
-        'verification-resend' => 'email',
         'forgot-password' => 'email',
         'reset-password' => 'email',
         'validate-reset-token' => 'email',
-        'change-registration-email' => 'current_email',
     ] as $limiter => $field) {
         $first = resolveGuestNamedLimits(
             $limiter,
             'POST',
             match ($limiter) {
-                'verification-resend' => '/api/v1/email/verification-notification',
                 'forgot-password' => '/api/v1/forgot-password',
                 'reset-password' => '/api/v1/reset-password',
-                'validate-reset-token' => '/api/v1/reset-password/validate-token',
-                default => '/api/v1/email/change-registration-email',
+                default => '/api/v1/reset-password/validate-token',
             },
             [$field => 'target@example.test'],
             str_repeat('d', 40),
@@ -250,11 +215,9 @@ test('failed login and recovery keys follow the target email instead of the prox
             $limiter,
             'POST',
             match ($limiter) {
-                'verification-resend' => '/api/v1/email/verification-notification',
                 'forgot-password' => '/api/v1/forgot-password',
                 'reset-password' => '/api/v1/reset-password',
-                'validate-reset-token' => '/api/v1/reset-password/validate-token',
-                default => '/api/v1/email/change-registration-email',
+                default => '/api/v1/reset-password/validate-token',
             },
             [$field => 'target@example.test'],
             str_repeat('e', 40),
@@ -283,8 +246,8 @@ test('untrusted forwarded IP headers do not bypass login limits', function () {
         ->toBe(array_map(fn (Limit $limit): string => $limit->key, $unforwarded));
 });
 
-test('four accounts can each log in once without sharing a limiter', function () {
-    $users = User::factory()->count(4)->create();
+test('four staff accounts can each log in once without sharing a limiter', function () {
+    $users = User::factory()->count(4)->create(['role' => 'manager']);
     $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
 
     foreach ($users as $user) {
@@ -301,9 +264,7 @@ test('four accounts can each log in once without sharing a limiter', function ()
     }
 });
 
-test('login and registration endpoints enforce their strict named limits with diagnostics', function () {
-    Notification::fake();
-
+test('login endpoint enforces its strict named limits with diagnostics', function () {
     $loginPayload = [
         'email' => 'limited-login@example.test',
         'password' => 'aaaaaa',
@@ -319,23 +280,6 @@ test('login and registration endpoints enforce their strict named limits with di
         ->assertJsonPath('code', 'RATE_LIMITED')
         ->assertJsonPath('data.policy', 'login-email');
 
-    $registrationPayload = [
-        'fullname' => 'Limited Registration',
-        'contact_number' => '09123456789',
-        'email' => 'limited-registration@example.test',
-        'password' => 'aaaaaa',
-        'password_confirmation' => 'aaaaaa',
-        'terms_accepted' => true,
-        'privacy_acknowledged' => true,
-    ];
-
-    foreach (range(1, 5) as $attempt) {
-        $this->postJson('/api/v1/register', $registrationPayload)->assertCreated();
-    }
-    $this->postJson('/api/v1/register', $registrationPayload)
-        ->assertTooManyRequests()
-        ->assertHeader('X-RateLimit-Policy', 'register-email')
-        ->assertJsonPath('data.policy', 'register-email');
 });
 
 test('abusive login traffic reaches the global safety ceiling', function () {

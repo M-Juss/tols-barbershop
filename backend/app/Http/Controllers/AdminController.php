@@ -6,7 +6,6 @@ use App\Http\Requests\StaffRequest;
 use App\Http\Resources\StaffResource;
 use App\Models\PushSubscription;
 use App\Models\User;
-use App\Services\SupportTicketAssignmentService;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +15,6 @@ use Throwable;
 class AdminController extends Controller
 {
     use ApiResponseTrait;
-
-    public function __construct(private readonly SupportTicketAssignmentService $supportTickets) {}
 
     /**
      * Display a listing of the resource.
@@ -132,10 +129,6 @@ class AdminController extends Controller
                 PushSubscription::where('user_id', $admin->id)->delete();
             }
 
-            if (! $admin->is_active || ! $admin->canAccessModule('customer-service')) {
-                $this->supportTickets->requeueAssignedTickets($admin->id);
-            }
-
             EntityChange::dispatch('admins');
 
             return $this->success('Admin updated successfully');
@@ -160,7 +153,6 @@ class AdminController extends Controller
             }
 
             DB::transaction(function () use ($admin): void {
-                $this->supportTickets->requeueAssignedTickets($admin->id);
                 PushSubscription::where('user_id', $admin->id)->delete();
                 $admin->tokens()->delete();
 

@@ -93,7 +93,7 @@ export function NotificationPrompt({
           <DialogTitle className="text-center">Stay in the Loop</DialogTitle>
           <DialogDescription className="text-center">
             Get notified about appointment updates, booking confirmations, and
-            support messages — even when the app is in the background.
+            booking updates — even when the app is in the background.
           </DialogDescription>
         </DialogHeader>
         <p className="text-center text-sm text-muted-foreground">

@@ -40,7 +40,6 @@ class WalkinAppointmentSeeder extends Seeder
             $barber = $barbers->random();
 
             Appointment::create([
-                'user_id' => null,
                 'service_id' => $service->id,
                 'barber_user_id' => $barber->id,
                 'appointment_date' => $date->toDateString(),

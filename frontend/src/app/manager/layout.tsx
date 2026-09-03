@@ -10,8 +10,6 @@ import {
   LayoutDashboard,
   BarChart3,
   MessageSquareText,
-  Contact,
-  Headset,
 } from "lucide-react";
 import { ResponsiveSidebar } from "@/components/common/ResponsiveSidebar";
 import { NotificationPrompt } from "@/components/common/NotificationPrompt";
@@ -29,7 +27,7 @@ const navSections = [
   {
     label: "Operations",
     items: [
-      { key: "appointment", href: "/manager/appointment", icon: BriefcaseBusiness, label: "Appointments" },
+      { key: "appointment", href: "/manager/appointment", icon: BriefcaseBusiness, label: "Schedules" },
       { key: "walkin", href: "/manager/walkin", icon: UserPlus, label: "Walkin" },
       { key: "history", href: "/manager/history", icon: History, label: "History" },
     ],
@@ -38,13 +36,6 @@ const navSections = [
     label: "Administration",
     items: [
       { key: "management", href: "/manager/management", icon: Calendar, label: "Management" },
-    ],
-  },
-  {
-    label: "Relations",
-    items: [
-      { key: "crm", href: "/manager/customers", icon: Contact, label: "Customers" },
-      { key: "customer-service", href: "/manager/customer-service", icon: Headset, label: "Customer Service" },
     ],
   },
   {
@@ -64,17 +55,13 @@ export default function ManagerLayout({
   useRoleRoutePersistence("/manager");
   const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);
-  const [waitingCount, setWaitingCount] = useState(0);
   const prevCountRef = useRef(0);
-  const prevWaitingRef = useRef(0);
   const isFirstLoadRef = useRef(true);
-  const isFirstWaitingLoadRef = useRef(true);
 
   const fetchSummary = useCallback(async (signal?: AbortSignal, force = false) => {
     try {
       const summary = await getNavigationSummary(signal, force);
       const pendingAppointments = summary.pending_appointments ?? 0;
-      const waitingTickets = summary.waiting_support_tickets ?? 0;
 
       if (!isFirstLoadRef.current && pendingAppointments > prevCountRef.current) {
         const diff = pendingAppointments - prevCountRef.current;
@@ -91,20 +78,6 @@ export default function ManagerLayout({
       prevCountRef.current = pendingAppointments;
       setPendingCount(pendingAppointments);
 
-      if (!isFirstWaitingLoadRef.current && waitingTickets > prevWaitingRef.current) {
-        const diff = waitingTickets - prevWaitingRef.current;
-        toast(`${diff} New Waiting Ticket${diff > 1 ? "s" : ""}`, {
-          description: `A customer is waiting in the support queue.`,
-          action: {
-            label: "View",
-            onClick: () => router.push("/manager/customer-service"),
-          },
-          duration: 8000,
-        });
-      }
-      isFirstWaitingLoadRef.current = false;
-      prevWaitingRef.current = waitingTickets;
-      setWaitingCount(waitingTickets);
     } catch {}
   }, [router]);
 
@@ -122,13 +95,11 @@ export default function ManagerLayout({
   }, [fetchSummary]);
 
   useRealtimeEvent("appointments", fetchSummary);
-  useRealtimeEvent("support_tickets", fetchSummary);
 
   const sections = navSections.map((section) => ({
     ...section,
     items: section.items.map((item) => {
       if (item.key === "appointment") return { ...item, badgeCount: pendingCount };
-      if (item.key === "customer-service") return { ...item, badgeCount: waitingCount };
       return item;
     }),
   }));

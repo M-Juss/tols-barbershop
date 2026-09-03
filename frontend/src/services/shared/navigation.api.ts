@@ -1,13 +1,7 @@
 import { authFetch } from "@/lib/api";
 
 export type NavigationSummary = {
-  unread_notifications: number | null;
-  support_ticket: {
-    id: number;
-    status: "waiting" | "active" | "resolved";
-  } | null;
   pending_appointments: number | null;
-  waiting_support_tickets: number | null;
 };
 
 const SUMMARY_STALE_MS = 5_000;

@@ -63,11 +63,11 @@ export function HeroSection() {
             Where classic meets modern style
           </p>
           <Link
-            href="/login"
+            href="/booking"
             className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent/70 px-7 py-3 text-base font-semibold text-accent-foreground shadow-[0_10px_28px_rgba(0,0,0,0.35)] transition-all duration-300 hover:-translate-y-1 hover:bg-accent/90 hover:shadow-[0_14px_34px_rgba(0,0,0,0.45)] active:translate-y-0 sm:px-8 animate-auth-card"
             style={{ animationDelay: "450ms" }}
           >
-            Schedule Your Appointment
+            Schedule Your Haircut
           </Link>
         </div>
       </div>

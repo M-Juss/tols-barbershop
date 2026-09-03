@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import { FacebookFab } from "@/components/landing/FacebookFab";
 
 const navLinks = [
   { name: "Home", href: "#home" },
@@ -14,7 +16,9 @@ const navLinks = [
 ];
 
 export function LandingHeader() {
+  const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const getNavHref = (href: string) => pathname === "/" ? href : `/${href}`;
 
   return (
     <>
@@ -37,7 +41,7 @@ export function LandingHeader() {
             {navLinks.map((link) => (
               <a
                 key={link.name}
-                href={link.href}
+                href={getNavHref(link.href)}
                 className="group relative text-white/85 drop-shadow-sm transition-colors duration-300 hover:text-white"
               >
                 {link.name}
@@ -51,13 +55,13 @@ export function LandingHeader() {
               href="/login"
               className="rounded-lg bg-white px-6 py-2.5 font-semibold text-black shadow-[0_8px_22px_rgba(0,0,0,0.24)] ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white hover:text-primary hover:shadow-[0_12px_28px_rgba(0,0,0,0.3)] active:translate-y-0"
             >
-              Login
+              Admin Login
             </Link>
             <Link
-              href="/register"
+              href="/booking"
               className="rounded-lg bg-primary px-5 py-2.5 font-semibold text-white shadow-[0_8px_22px_rgba(0,0,0,0.28)] ring-1 ring-white/25 transition-all duration-300 hover:-translate-y-0.5 hover:bg-accent/80 hover:text-white hover:shadow-[0_12px_28px_rgba(0,0,0,0.34)] active:translate-y-0"
             >
-              Create Account
+              Book Now
             </Link>
           </div>
 
@@ -91,7 +95,7 @@ export function LandingHeader() {
               {navLinks.map((link) => (
                 <a
                   key={link.name}
-                  href={link.href}
+                  href={getNavHref(link.href)}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="text-lg text-white transition-colors hover:text-accent"
                 >
@@ -105,19 +109,20 @@ export function LandingHeader() {
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="block w-full rounded-lg bg-white px-4 py-2.5 text-center font-semibold text-primary shadow-lg shadow-black/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
               >
-                Login
+                Admin Login
               </Link>
               <Link
-                href="/register"
+                href="/booking"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="block w-full rounded-lg bg-primary px-4 py-2.5 text-center font-semibold text-white shadow-lg shadow-black/25 ring-1 ring-white/25 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white hover:text-primary hover:shadow-xl"
               >
-                Create Account
+                Book Now
               </Link>
             </div>
           </div>
         </div>
       )}
+      <FacebookFab />
     </>
   );
 }

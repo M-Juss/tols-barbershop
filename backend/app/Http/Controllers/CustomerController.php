@@ -6,7 +6,7 @@ use App\Http\Requests\CustomerListRequest;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\CustomerResourceDetail;
 use App\Models\Appointment;
-use App\Models\User;
+use App\Models\BookingCustomer;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Support\Facades\DB;
 
@@ -17,68 +17,47 @@ class CustomerController extends Controller
     public function index(CustomerListRequest $request)
     {
         $validated = $request->validated();
-
-        $baseQuery = User::where('role', 'customer');
-
+        $baseQuery = BookingCustomer::query();
         $totalCustomers = (clone $baseQuery)->count();
-
         $newThisMonth = (clone $baseQuery)
             ->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->count();
+        $recentCutoff = now()->subDays(60)->toDateString();
+        $activeCount = (clone $baseQuery)
+            ->where(function ($query) use ($recentCutoff): void {
+                $query->whereDoesntHave('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed'))
+                    ->orWhereHas('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', $recentCutoff));
+            })
+            ->count();
 
-        // Active/Inactive based on 60-day rule
-        $activeQuery = (clone $baseQuery)
-            ->where(function ($q) {
-                $q->whereDoesntHave('appointments', fn ($aq) => $aq->withTrashed()->where('status', 'completed'))
-                    ->orWhereHas('appointments', fn ($aq) => $aq->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', now()->subDays(60)));
-            });
-        $activeCount = (clone $activeQuery)->count();
-        $inactiveCount = $totalCustomers - $activeCount;
-
-        $query = User::where('role', 'customer')
-            ->withCount(['appointments as total_visits' => fn ($q) => $q->withTrashed()->where('status', 'completed')])
-            ->withCount(['appointments as no_show_count' => fn ($q) => $q->withTrashed()->where('status', 'no_show')])
-            ->withCount(['appointments as cancelled_count' => fn ($q) => $q->withTrashed()->where('status', 'cancelled')])
-            ->withSum(['appointments as lifetime_value' => fn ($q) => $q->withTrashed()->whereIn('status', ['completed'])->whereNotNull('user_id')], 'price')
-            ->withAvg('appointmentFeedback as average_rating', 'rating')
-            ->addSelect([
-                'last_visit_date' => Appointment::withTrashed()->select('appointment_date')
-                    ->whereColumn('user_id', 'users.id')
-                    ->where('status', 'completed')
-                    ->latest('appointment_date')
-                    ->limit(1),
-            ]);
+        $query = $this->customerMetricsQuery();
 
         if (! empty($validated['search'])) {
-            $search = $validated['search'];
-            $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
-            $query->where(function ($q) use ($like) {
-                $q->whereRaw("fullname LIKE ? ESCAPE '!'", [$like])
+            $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $validated['search']).'%';
+            $query->where(function ($customerQuery) use ($like): void {
+                $customerQuery->whereRaw("fullname LIKE ? ESCAPE '!'", [$like])
                     ->orWhereRaw("email LIKE ? ESCAPE '!'", [$like])
                     ->orWhereRaw("contact_number LIKE ? ESCAPE '!'", [$like]);
             });
         }
 
-        if (! empty($validated['status'])) {
-            if ($validated['status'] === 'active') {
-                $query->where(function ($q) {
-                    $q->whereDoesntHave('appointments', fn ($aq) => $aq->withTrashed()->where('status', 'completed'))
-                        ->orWhereHas('appointments', fn ($aq) => $aq->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', now()->subDays(60)));
-                });
-            } else {
-                $query->whereHas('appointments', fn ($q) => $q->withTrashed()->where('status', 'completed'))
-                    ->whereDoesntHave('appointments', fn ($q) => $q->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', now()->subDays(60)));
-            }
+        if (($validated['status'] ?? null) === 'active') {
+            $query->where(function ($customerQuery) use ($recentCutoff): void {
+                $customerQuery->whereDoesntHave('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed'))
+                    ->orWhereHas('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', $recentCutoff));
+            });
+        } elseif (($validated['status'] ?? null) === 'inactive') {
+            $query->whereHas('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed'))
+                ->whereDoesntHave('appointments', fn ($appointments) => $appointments->withTrashed()->where('status', 'completed')->where('appointment_date', '>=', $recentCutoff));
         }
 
         $sortField = $validated['sort'] ?? 'fullname';
-        $sortDir = $validated['dir'] ?? 'asc';
-        $perPage = $validated['per_page'] ?? 15;
+        $sortDirection = $validated['dir'] ?? 'asc';
         $customers = $query
-            ->orderBy($sortField, $sortDir)
-            ->orderBy('id', $sortDir)
-            ->paginate($perPage, ['*'], 'page', $validated['page'] ?? 1);
+            ->orderBy($sortField, $sortDirection)
+            ->orderBy('id', $sortDirection)
+            ->paginate($validated['per_page'] ?? 15, ['*'], 'page', $validated['page'] ?? 1);
 
         return $this->success('Customers retrieved successfully.', [
             'customers' => CustomerResource::collection($customers),
@@ -92,68 +71,61 @@ class CustomerController extends Controller
                 'total_customers' => $totalCustomers,
                 'new_this_month' => $newThisMonth,
                 'active_count' => $activeCount,
-                'inactive_count' => $inactiveCount,
+                'inactive_count' => $totalCustomers - $activeCount,
             ],
         ]);
     }
 
     public function show(string $id)
     {
-        $user = User::where('role', 'customer')
-            ->withCount(['appointments as total_visits' => fn ($q) => $q->withTrashed()->where('status', 'completed')])
-            ->withCount(['appointments as no_show_count' => fn ($q) => $q->withTrashed()->where('status', 'no_show')])
-            ->withCount(['appointments as cancelled_count' => fn ($q) => $q->withTrashed()->where('status', 'cancelled')])
-            ->withSum(['appointments as lifetime_value' => fn ($q) => $q->withTrashed()->where('status', 'completed')->whereNotNull('user_id')], 'price')
-            ->withAvg('appointmentFeedback as average_rating', 'rating')
-            ->addSelect([
-                'last_visit_date' => Appointment::withTrashed()->select('appointment_date')
-                    ->whereColumn('user_id', 'users.id')
-                    ->where('status', 'completed')
-                    ->latest('appointment_date')
-                    ->limit(1),
-            ])
-            ->findOrFail($id);
+        $customer = $this->customerMetricsQuery()->findOrFail($id);
 
-        // Service preferences
-        $servicePreferences = Appointment::withTrashed()->select([
-            DB::raw('services.name as service_name'),
-            DB::raw('COUNT(*) as count'),
-        ])
+        $servicePreferences = Appointment::withTrashed()
+            ->select([DB::raw('services.name as service_name'), DB::raw('COUNT(*) as count')])
             ->join('services', 'services.id', '=', 'appointments.service_id')
-            ->where('appointments.user_id', $user->id)
+            ->where('appointments.booking_customer_id', $customer->id)
             ->where('appointments.status', 'completed')
             ->groupBy('services.name')
             ->orderByDesc('count')
             ->get();
+        $customer->setRelation('servicePreferences', $servicePreferences);
 
-        $user->setRelation('servicePreferences', $servicePreferences);
-
-        // Barber preferences
-        $barberPreferences = Appointment::withTrashed()->select([
-            DB::raw('barbers.fullname as barber_name'),
-            DB::raw('COUNT(*) as count'),
-        ])
+        $barberPreferences = Appointment::withTrashed()
+            ->select([DB::raw('barbers.fullname as barber_name'), DB::raw('COUNT(*) as count')])
             ->join('users as barbers', 'barbers.id', '=', 'appointments.barber_user_id')
-            ->where('appointments.user_id', $user->id)
+            ->where('appointments.booking_customer_id', $customer->id)
             ->where('appointments.status', 'completed')
             ->groupBy('barbers.fullname')
             ->orderByDesc('count')
             ->get();
+        $customer->setRelation('barberPreferences', $barberPreferences);
 
-        $user->setRelation('barberPreferences', $barberPreferences);
-
-        // Recent 3 appointments
-        $recentAppointments = Appointment::with(['service:id,name', 'barber:id,fullname'])
-            ->where('user_id', $user->id)
+        $customer->setRelation('recentAppointments', Appointment::with(['service:id,name', 'barber:id,fullname'])
+            ->where('booking_customer_id', $customer->id)
             ->latest('appointment_date')
             ->latest('appointment_time')
             ->limit(3)
-            ->get();
-
-        $user->setRelation('recentAppointments', $recentAppointments);
+            ->get());
 
         return $this->success('Customer retrieved successfully.', [
-            'customer' => new CustomerResourceDetail($user),
+            'customer' => new CustomerResourceDetail($customer),
         ]);
+    }
+
+    private function customerMetricsQuery()
+    {
+        return BookingCustomer::query()
+            ->withCount(['appointments as total_visits' => fn ($query) => $query->withTrashed()->where('status', 'completed')])
+            ->withCount(['appointments as no_show_count' => fn ($query) => $query->withTrashed()->where('status', 'no_show')])
+            ->withCount(['appointments as cancelled_count' => fn ($query) => $query->withTrashed()->where('status', 'cancelled')])
+            ->withSum(['appointments as lifetime_value' => fn ($query) => $query->withTrashed()->where('status', 'completed')], 'price')
+            ->withAvg('feedback as average_rating', 'rating')
+            ->addSelect([
+                'last_visit_date' => Appointment::withTrashed()->select('appointment_date')
+                    ->whereColumn('booking_customer_id', 'booking_customers.id')
+                    ->where('status', 'completed')
+                    ->latest('appointment_date')
+                    ->limit(1),
+            ]);
     }
 }

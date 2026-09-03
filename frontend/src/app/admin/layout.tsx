@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useRealtimeEvent } from "@/contexts/RealtimeContext";
-import { Calendar, LayoutDashboard, History, UserPlus, MessageSquareText, Settings, BarChart3, Contact, Headset } from "lucide-react";
+import { Calendar, LayoutDashboard, History, UserPlus, MessageSquareText, Settings, BarChart3 } from "lucide-react";
 import { ResponsiveSidebar } from "@/components/common/ResponsiveSidebar";
 import { NotificationPrompt } from "@/components/common/NotificationPrompt";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ const navSections = [
   {
     label: "Operations",
     items: [
-      { key: "appointment", href: "/admin/appointment", icon: Calendar, label: "Appointments" },
+      { key: "appointment", href: "/admin/appointment", icon: Calendar, label: "Schedules" },
       { key: "walkin", href: "/admin/walkin", icon: UserPlus, label: "Walkin" },
       { key: "history", href: "/admin/history", icon: History, label: "History" },
     ],
@@ -30,13 +30,6 @@ const navSections = [
     label: "Administration",
     items: [
       { key: "management", href: "/admin/management", icon: Settings, label: "Management" },
-    ],
-  },
-  {
-    label: "Relations",
-    items: [
-      { key: "crm", href: "/admin/customers", icon: Contact, label: "Customers" },
-      { key: "customer-service", href: "/admin/customer-service", icon: Headset, label: "Customer Service" },
     ],
   },
   {
@@ -60,11 +53,8 @@ export default function AdminLayout({
   const router = useRouter();
   const { user, isLoading } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
-  const [waitingCount, setWaitingCount] = useState(0);
   const prevCountRef = useRef(0);
-  const prevWaitingRef = useRef(0);
   const isFirstLoadRef = useRef(true);
-  const isFirstWaitingLoadRef = useRef(true);
   const permissions = user?.permissions ?? noPermissions;
   const fallbackPath = navItems.find((item) =>
     permissions.includes(item.key),
@@ -75,7 +65,6 @@ export default function AdminLayout({
       : pathname === item.href || pathname.startsWith(`${item.href}/`),
   )?.key;
   const canViewAppointments = permissions.includes("appointment");
-  const canViewCustomerService = permissions.includes("customer-service");
 
   useEffect(() => {
     if (isLoading || user?.role !== "admin" || !requiredPermission) return;
@@ -95,7 +84,6 @@ export default function AdminLayout({
     try {
       const summary = await getNavigationSummary(signal, force);
       const pendingAppointments = summary.pending_appointments ?? 0;
-      const waitingTickets = summary.waiting_support_tickets ?? 0;
 
       if (!isFirstLoadRef.current && pendingAppointments > prevCountRef.current) {
         const diff = pendingAppointments - prevCountRef.current;
@@ -112,25 +100,11 @@ export default function AdminLayout({
       prevCountRef.current = pendingAppointments;
       setPendingCount(pendingAppointments);
 
-      if (!isFirstWaitingLoadRef.current && waitingTickets > prevWaitingRef.current) {
-        const diff = waitingTickets - prevWaitingRef.current;
-        toast(`${diff} New Waiting Ticket${diff > 1 ? "s" : ""}`, {
-          description: `A customer is waiting in the support queue.`,
-          action: {
-            label: "View",
-            onClick: () => router.push("/admin/customer-service"),
-          },
-          duration: 8000,
-        });
-      }
-      isFirstWaitingLoadRef.current = false;
-      prevWaitingRef.current = waitingTickets;
-      setWaitingCount(waitingTickets);
     } catch {}
   }, [router]);
 
   useEffect(() => {
-    if (!canViewAppointments && !canViewCustomerService) return;
+    if (!canViewAppointments) return;
 
     const controller = new AbortController();
     queueMicrotask(() => void fetchSummary(controller.signal, false));
@@ -142,10 +116,9 @@ export default function AdminLayout({
       controller.abort();
       window.removeEventListener("appointments:updated", onAppointmentsUpdated);
     };
-  }, [canViewAppointments, canViewCustomerService, fetchSummary]);
+  }, [canViewAppointments, fetchSummary]);
 
   useRealtimeEvent("appointments", fetchSummary, canViewAppointments);
-  useRealtimeEvent("support_tickets", fetchSummary, canViewCustomerService);
 
   const sections = navSections
     .map((section) => ({
@@ -157,7 +130,6 @@ export default function AdminLayout({
       ...section,
       items: section.items.map((item) => {
         if (item.key === "appointment") return { ...item, badgeCount: pendingCount };
-        if (item.key === "customer-service") return { ...item, badgeCount: waitingCount };
         return item;
       }),
     }));

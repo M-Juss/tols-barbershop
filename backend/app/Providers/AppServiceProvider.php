@@ -4,12 +4,10 @@ namespace App\Providers;
 
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
@@ -66,16 +64,25 @@ class AppServiceProvider extends ServiceProvider
             $limit(30, 'login-session:'.$sessionKey($request), 'login-session'),
             $limit(300, 'login-global', 'login-global'),
         ]);
-        RateLimiter::for('register', fn (Request $request): array => [
-            $limit(5, 'register-email:'.$emailKey($request, 'email'), 'register-email'),
-            $limit(10, 'register-session:'.$sessionKey($request), 'register-session'),
-            $limit(60, 'register-global', 'register-global'),
-        ]);
         RateLimiter::for('public-read', fn (Request $request): Limit => $limit(
             600,
             'public-read:'.$routeKey($request),
             'public-read',
         ));
+        RateLimiter::for('public-booking-otp', fn (Request $request): array => [
+            $limit(1, 'booking-otp-email:'.$emailKey($request, 'email'), 'public-booking-otp-email'),
+            $limit(10, 'booking-otp-session:'.$sessionKey($request), 'public-booking-otp-session'),
+            $limit(120, 'booking-otp-global', 'public-booking-otp-global'),
+        ]);
+        RateLimiter::for('public-booking-verify', fn (Request $request): array => [
+            $limit(10, 'booking-verify-token:'.hash('sha256', (string) $request->input('request_token')), 'public-booking-verify-token'),
+            $limit(30, 'booking-verify-session:'.$sessionKey($request), 'public-booking-verify-session'),
+            $limit(300, 'booking-verify-global', 'public-booking-verify-global'),
+        ]);
+        RateLimiter::for('public-feedback', fn (Request $request): array => [
+            $limit(10, 'public-feedback-token:'.hash('sha256', (string) $request->input('token', $request->query('token'))), 'public-feedback-token'),
+            $limit(30, 'public-feedback-session:'.$sessionKey($request), 'public-feedback-session'),
+        ]);
 
         RateLimiter::for('polling', fn (Request $request): Limit => $limit(
             600,
@@ -101,32 +108,12 @@ class AppServiceProvider extends ServiceProvider
             'booking-action',
         ));
 
-        RateLimiter::for('support-message', fn (Request $request): Limit => $limit(
-            60,
-            'support-msg:'.$userId($request),
-            'support-message',
-        ));
-
         RateLimiter::for('logout', fn (Request $request): Limit => $limit(
             30,
             'logout:'.$userId($request),
             'logout',
         ));
 
-        RateLimiter::for('verification-link', fn (Request $request): array => [
-            $limit(6, 'verification-target:'.hash('sha256', (string) (
-                $request->route('id') ?? $normalizedEmail($request, 'email')
-            )), 'verification-target'),
-            $limit(120, 'verification-global', 'verification-global'),
-        ]);
-        RateLimiter::for('verification-resend', fn (Request $request): array => [
-            $limit(6, 'verification-resend-email:'.$emailKey($request, 'email'), 'verification-resend-email'),
-            $limit(60, 'verification-resend-global', 'verification-resend-global'),
-        ]);
-        RateLimiter::for('change-registration-email', fn (Request $request): array => [
-            $limit(5, 'change-registration-email:'.$emailKey($request, 'current_email'), 'change-registration-email'),
-            $limit(30, 'change-registration-email-global', 'change-registration-email-global'),
-        ]);
         RateLimiter::for('forgot-password', fn (Request $request): array => [
             $limit(10, 'forgot-password-email:'.$emailKey($request, 'email'), 'forgot-password-email'),
             $limit(60, 'forgot-password-global', 'forgot-password-global'),
@@ -140,41 +127,10 @@ class AppServiceProvider extends ServiceProvider
             $limit(120, 'validate-reset-token-global', 'validate-reset-token-global'),
         ]);
 
-        VerifyEmail::createUrlUsing(function (User $user): string {
-            $signedPath = URL::temporarySignedRoute(
-                'verification.verify',
-                now()->addMinutes((int) config('auth.verification.expire', 60)),
-                [
-                    'id' => $user->getKey(),
-                    'hash' => sha1($user->getEmailForVerification()),
-                ],
-                absolute: false,
-            );
-
-            return rtrim((string) config('app.frontend_url'), '/')
-                .'/verify-email?'.http_build_query(['email' => $user->getEmailForVerification()])
-                .'#'.http_build_query(['verification' => $signedPath]);
-        });
-
         $emailViews = [
             'html' => 'emails.auth-action',
             'text' => 'emails.auth-action-text',
         ];
-
-        VerifyEmail::toMailUsing(function (User $user, string $verificationUrl) use ($emailViews): MailMessage {
-            return (new MailMessage)
-                ->subject('Verify your TOL Barbershop email')
-                ->view($emailViews, [
-                    'preheader' => 'One quick step to finish setting up your TOL Barbershop account.',
-                    'heading' => 'Verify Your Email',
-                    'customerName' => trim((string) $user->fullname) ?: 'there',
-                    'intro' => "You're almost there. Verify your email address to finish setting up your TOL Barbershop account.",
-                    'actionText' => 'Verify Email',
-                    'actionUrl' => $verificationUrl,
-                    'expiresIn' => (int) config('auth.verification.expire', 60),
-                    'securityMessage' => "If you didn't create this account, you can safely ignore this email.",
-                ]);
-        });
 
         $resetPasswordUrl = function (User $user, string $token): string {
             $query = http_build_query([

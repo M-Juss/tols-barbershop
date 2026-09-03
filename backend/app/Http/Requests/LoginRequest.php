@@ -16,7 +16,7 @@ class LoginRequest extends FormRequest
 {
     use SanitizesInput;
 
-    public const DEACTIVATED_ACCOUNT_MESSAGE = 'This account has been deactivated. This email can no longer be used to log in or register.';
+    public const DEACTIVATED_ACCOUNT_MESSAGE = 'This staff account has been deactivated and can no longer be used to log in.';
 
     /**
      * Determine if the user is authorized to make this request.
