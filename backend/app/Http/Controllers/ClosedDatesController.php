@@ -201,7 +201,7 @@ class ClosedDatesController extends Controller
                     $subject = $scope === 'barber'
                         ? "Cannot close {$barber->fullname}'s schedule."
                         : 'Cannot close this date.';
-                    $appointmentLabel = $conflictCount === 1 ? 'appointment' : 'appointments';
+                    $appointmentLabel = $conflictCount === 1 ? 'booking' : 'bookings';
 
                     throw ValidationException::withMessages([
                         'date_closed' => "{$subject} Resolve {$conflictCount} active {$appointmentLabel} first.",

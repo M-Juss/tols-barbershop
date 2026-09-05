@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage() {
         <ul>
           <li><strong>Public bookings:</strong> name, verified email address, phone number, barber, service, date, time, notes, group-member names, price, status, and booking reference.</li>
           <li><strong>Email records:</strong> one-time verification data and delivery status for booking updates. Verification codes are stored as secure hashes and expire.</li>
-          <li><strong>Appointments:</strong> confirmation, rejection, rescheduling, cancellation, completion, no-show, and related reasons or timestamps.</li>
+          <li><strong>Bookings:</strong> confirmation, rejection, rescheduling, cancellation, completion, no-show, and related reasons or timestamps.</li>
           <li><strong>Feedback:</strong> rating, optional comment, booking relationship, and whether staff feature the review publicly.</li>
           <li><strong>Walk-ins and staff accounts:</strong> operational customer details entered by staff and the identity, contact, role, session, and security data required for authorized staff access.</li>
           <li><strong>Technical data:</strong> security cookies, request metadata, rate-limit records, and application logs.</li>
@@ -38,7 +38,7 @@ export default function PrivacyPolicyPage() {
         <h2>3. How we use information</h2>
         <p>
           We use this information to verify booking email addresses, review and
-          manage appointments, send status updates, maintain an email-based CRM,
+          manage bookings, send status updates, maintain an email-based CRM,
           request one rating after a completed booking, operate staff functions,
           prepare business reports, prevent misuse, and meet legal obligations.
           Customers do not need or receive website accounts.

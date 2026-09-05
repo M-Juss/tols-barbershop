@@ -1,7 +1,7 @@
 {
   "name": "TOL Barbershop",
   "short_name": "Tol",
-  "description": "Premium barbershop experience — book appointments, manage services, and more.",
+  "description": "Premium barbershop experience — schedule bookings, manage services, and more.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -90,7 +90,7 @@ test('barber day off blocks pending and confirmed appointments then creates a pr
         ->assertUnprocessable()
         ->assertJsonPath(
             'message',
-            "Cannot close {$barber->fullname}'s schedule. Resolve 2 active appointments first.",
+            "Cannot close {$barber->fullname}'s schedule. Resolve 2 active bookings first.",
         );
 
     expect(ClosedDates::count())->toBe(0)
@@ -142,7 +142,7 @@ test('shop closure blocks active appointments for every barber', function () {
         ->assertUnprocessable()
         ->assertJsonPath(
             'message',
-            'Cannot close this date. Resolve 2 active appointments first.',
+            'Cannot close this date. Resolve 2 active bookings first.',
         );
 
     $pending->update(['status' => 'rejected', 'active_slot_key' => null]);

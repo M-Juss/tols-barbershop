@@ -97,7 +97,7 @@ class AppointmentNotificationService
             'Reference' => DisplayId::group($first->id),
             'Date' => $first->appointment_date->format('F j, Y'),
             'Barber' => $first->barber?->fullname ?? '—',
-            'Appointments' => (string) $appointments->count(),
+            'Bookings' => (string) $appointments->count(),
             'Total' => '₱'.number_format((float) $appointments->sum('price'), 2),
         ];
         if (in_array($status, ['rejected', 'cancelled'], true) && filled($first->cancellation_reason)) {
@@ -114,7 +114,7 @@ class AppointmentNotificationService
                 'intro' => $intro,
                 'details' => $details,
                 'footer' => $status === 'confirmed'
-                    ? 'Please arrive about five minutes before the earliest appointment.'
+                    ? 'Please arrive about five minutes before the earliest booking.'
                     : 'Contact TOL Barbershop if you need assistance.',
             ],
             $createdByUserId,
@@ -128,17 +128,17 @@ class AppointmentNotificationService
             'confirmed' => 'Booking Confirmed',
             'rejected' => 'Booking Rejected',
             'cancelled' => 'Booking Cancelled',
-            'completed' => 'Appointment Completed',
-            'no_show' => 'Appointment Marked No-Show',
+            'completed' => 'Booking Completed',
+            'no_show' => 'Booking Marked No-Show',
             default => 'Booking Updated',
         };
         $intro = match ($status) {
-            'confirmed' => 'Your appointment has been confirmed by the barbershop.',
-            'rejected' => 'The barbershop could not confirm your appointment request.',
-            'cancelled' => 'Your appointment has been cancelled.',
-            'completed' => 'Thank you for visiting TOL Barbershop. Your appointment is complete.',
-            'no_show' => 'Your appointment was marked as a no-show.',
-            default => 'Your appointment status has been updated.',
+            'confirmed' => 'Your booking has been confirmed by the barbershop.',
+            'rejected' => 'The barbershop could not confirm your booking request.',
+            'cancelled' => 'Your booking has been cancelled.',
+            'completed' => 'Thank you for visiting TOL Barbershop. Your booking is complete.',
+            'no_show' => 'Your booking was marked as a no-show.',
+            default => 'Your booking status has been updated.',
         };
         $details = $this->details($appointment);
         if (in_array($status, ['rejected', 'cancelled'], true) && filled($appointment->cancellation_reason)) {

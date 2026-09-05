@@ -16,10 +16,23 @@ export type PublicService = {
 };
 
 export type PublicBookingSettings = {
+  open_day_from: number;
+  open_day_to: number;
+  closed_weekday: number | null;
   opening_time: string;
   closing_time: string;
+  custom_open_time: string;
+  booking_days_ahead: number;
   slot_interval_minutes: number;
   max_slots_per_booking: number;
+  effective_from: string;
+  open_slots: PublicOpenSlot[];
+};
+
+export type PublicOpenSlot = {
+  date: string;
+  time: string;
+  barber_user_id: number;
 };
 
 export type PublicClosedDate = {
@@ -58,6 +71,11 @@ export type OccupiedPublicSlot = {
   duration_minutes: number;
 };
 
+export type PublicAvailability = {
+  occupied_slots: OccupiedPublicSlot[];
+  time_slots: string[];
+};
+
 export type BookingOtpResponse = {
   request_token: string;
   expires_in_seconds: number;
@@ -81,7 +99,7 @@ export async function getPublicBookingBootstrap(): Promise<PublicBookingBootstra
 export async function getPublicUnavailableSlots(
   barberId: number,
   date: string,
-): Promise<OccupiedPublicSlot[]> {
+): Promise<PublicAvailability> {
   const params = new URLSearchParams({
     barber_id: String(barberId),
     date,
@@ -89,7 +107,10 @@ export async function getPublicUnavailableSlots(
   const response = await publicFetch(
     `${API}/public-booking/available-slots?${params.toString()}`,
   );
-  return response.data;
+  return {
+    occupied_slots: response.data,
+    time_slots: response.time_slots,
+  };
 }
 
 export async function requestBookingOtp(

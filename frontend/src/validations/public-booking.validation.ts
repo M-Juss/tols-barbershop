@@ -39,10 +39,10 @@ export const publicBookingSchema = z
       });
     }
     if (data.mode === "single" && data.appointments.length !== 1) {
-      ctx.addIssue({ code: "custom", path: ["appointments"], message: "Select one appointment" });
+      ctx.addIssue({ code: "custom", path: ["appointments"], message: "Select one booking" });
     }
     if (data.mode === "group" && data.appointments.length < 2) {
-      ctx.addIssue({ code: "custom", path: ["appointments"], message: "Select at least two appointments" });
+      ctx.addIssue({ code: "custom", path: ["appointments"], message: "Select at least two bookings" });
     }
     if (data.mode === "group") {
       data.appointments.slice(1).forEach((appointment, index) => {

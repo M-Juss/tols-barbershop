@@ -20,8 +20,6 @@ class AppointmentBookingService
 
     public const MAX_PENDING_APPOINTMENTS_PER_CUSTOMER = 11;
 
-    public const MAX_BOOKING_DAYS_AHEAD = 7;
-
     private const STATUS_TRANSITIONS = [
         'pending' => ['confirmed', 'cancelled', 'rejected'],
         'confirmed' => ['completed', 'cancelled', 'no_show'],
@@ -30,6 +28,8 @@ class AppointmentBookingService
         'no_show' => [],
         'rejected' => [],
     ];
+
+    public function __construct(private readonly BookingScheduleService $scheduleService) {}
 
     /**
      * @param  array<int, array{service_id: int, appointment_time: string}>  $slots
@@ -53,7 +53,7 @@ class AppointmentBookingService
 
             if ($scheduledAt->addMinutes(15)->lt(CarbonImmutable::now($this->shopTimezone()))) {
                 throw ValidationException::withMessages([
-                    $field => 'The appointment time cannot be in the past.',
+                    $field => 'The booking time cannot be in the past.',
                 ]);
             }
 
@@ -79,7 +79,7 @@ class AppointmentBookingService
             if ($pendingCount + $pendingAppointmentsToAdd > self::MAX_PENDING_APPOINTMENTS_PER_CUSTOMER) {
                 throw ValidationException::withMessages([
                     'appointments' => sprintf(
-                        'A customer may have at most %d pending appointments.',
+                        'A customer may have at most %d pending bookings.',
                         self::MAX_PENDING_APPOINTMENTS_PER_CUSTOMER,
                     ),
                 ]);
@@ -87,6 +87,21 @@ class AppointmentBookingService
         }
 
         $this->assertDateAvailableAndLock($barberUserId, $appointmentDate);
+
+        $allowedTimes = $this->scheduleService->startTimesFor($appointmentDate, $barberUserId);
+        if ($allowedTimes === []) {
+            throw ValidationException::withMessages([
+                'appointment_date' => 'The selected date is not available for booking.',
+            ]);
+        }
+
+        foreach ($parsedSlots as $slot) {
+            if (! in_array($this->scheduleService->normalizeTime($slot['appointment_time']), $allowedTimes, true)) {
+                throw ValidationException::withMessages([
+                    $slot['field'] => 'The selected start time is not available.',
+                ]);
+            }
+        }
 
         $ignoreAppointmentIds = collect($ignoreAppointmentIds)
             ->map(fn (int|string $id): int => (int) $id)
@@ -126,7 +141,7 @@ class AppointmentBookingService
                 if ($start < $occupied['end'] && $end > $occupied['start']) {
                     $time12 = CarbonImmutable::parse($slot['appointment_time'])->format('g:i A');
                     throw ValidationException::withMessages([
-                        $slot['field'] => "The time slot {$time12} overlaps another appointment.",
+                        $slot['field'] => "The time slot {$time12} overlaps another booking.",
                     ]);
                 }
             }
@@ -217,7 +232,7 @@ class AppointmentBookingService
     {
         if (! in_array($status, self::ACTIVE_STATUSES, true)) {
             throw ValidationException::withMessages([
-                'status' => 'Invalid appointment status.',
+                'status' => 'Invalid booking status.',
             ]);
         }
     }
@@ -230,7 +245,7 @@ class AppointmentBookingService
 
         if (! in_array($nextStatus, self::STATUS_TRANSITIONS[$currentStatus] ?? [], true)) {
             throw ValidationException::withMessages([
-                'status' => 'This appointment cannot be changed to that status.',
+                'status' => 'This booking cannot be changed to that status.',
             ]);
         }
     }
@@ -255,7 +270,7 @@ class AppointmentBookingService
 
         if (! $scheduledAt || $scheduledAt->toDateString() > $today) {
             throw ValidationException::withMessages([
-                'status' => 'This appointment has not happened yet and cannot be marked as completed.',
+                'status' => 'This booking has not happened yet and cannot be marked as completed.',
             ]);
         }
     }
@@ -305,26 +320,21 @@ class AppointmentBookingService
 
         if (! $date || $date->format('Y-m-d') !== $value) {
             throw ValidationException::withMessages([
-                'appointment_date' => 'The appointment date must use the Y-m-d format.',
+                'appointment_date' => 'The booking date must use the Y-m-d format.',
             ]);
         }
 
         $today = CarbonImmutable::today($this->shopTimezone());
         if ($date->lt($today)) {
             throw ValidationException::withMessages([
-                'appointment_date' => 'The appointment date cannot be in the past.',
+                'appointment_date' => 'The booking date cannot be in the past.',
             ]);
         }
 
-        if ($date->gt($today->addDays(self::MAX_BOOKING_DAYS_AHEAD))) {
+        $bookingDaysAhead = $this->scheduleService->bookingDaysAhead();
+        if ($date->gt($today->addDays($bookingDaysAhead))) {
             throw ValidationException::withMessages([
-                'appointment_date' => 'Appointments may only be booked up to 7 days in advance.',
-            ]);
-        }
-
-        if ($date->isSunday()) {
-            throw ValidationException::withMessages([
-                'appointment_date' => 'Appointments cannot be booked on Sundays.',
+                'appointment_date' => "Bookings may only be scheduled up to {$bookingDaysAhead} days in advance.",
             ]);
         }
 
@@ -333,7 +343,7 @@ class AppointmentBookingService
 
     private function parseSlotTime(string $value, string $field): int
     {
-        if (preg_match('/^(09|1[0-1]):00$|^12:30$|^(1[3-9]):00$/', $value, $matches) !== 1) {
+        if (preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value) !== 1) {
             throw ValidationException::withMessages([
                 $field => 'The selected start time is not available.',
             ]);

@@ -76,8 +76,27 @@ test('staff can manage add-ons and apply them to confirmed appointments', functi
         ->and(AppointmentAddOn::query()->where('appointment_id', $appointment->id)->count())->toBe(1)
         ->and(BookingEmailDelivery::query()->where('appointment_id', $appointment->id)->count())->toBe(0);
 
-    $line = AppointmentAddOn::query()->where('appointment_id', $appointment->id)->firstOrFail();
+    $this->postJson("/api/v1/appointments/{$appointment->id}/add-ons", [
+        'add_on_id' => $addOn->id,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.price', '400.00');
+
+    expect($appointment->refresh()->price)->toBe('400.00')
+        ->and(AppointmentAddOn::query()->where('appointment_id', $appointment->id)->count())->toBe(2);
+
+    $line = AppointmentAddOn::query()
+        ->where('appointment_id', $appointment->id)
+        ->oldest('id')
+        ->firstOrFail();
     $this->deleteJson("/api/v1/appointments/{$appointment->id}/add-ons/{$line->id}")
+        ->assertOk()
+        ->assertJsonPath('data.price', '350.00');
+
+    $remainingLine = AppointmentAddOn::query()
+        ->where('appointment_id', $appointment->id)
+        ->firstOrFail();
+    $this->deleteJson("/api/v1/appointments/{$appointment->id}/add-ons/{$remainingLine->id}")
         ->assertOk()
         ->assertJsonPath('data.price', '300.00');
 

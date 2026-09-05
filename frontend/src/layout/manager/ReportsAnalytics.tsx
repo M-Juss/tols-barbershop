@@ -522,7 +522,7 @@ function RevenuePanel({ data, granularity }: { data: ReportRevenue; granularity:
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Total Revenue" value={`₱${data.total_revenue.toLocaleString()}`} icon={PhilippinePeso} iconContainerClassName="bg-orange-100" iconClassName="text-orange-500" size="md" />
-        <StatCard label="Avg per Appointment" value={`₱${data.average_per_appointment.toLocaleString()}`} icon={TrendingUp} iconContainerClassName="bg-teal-100" iconClassName="text-teal-500" size="md" />
+        <StatCard label="Avg per Booking" value={`₱${data.average_per_appointment.toLocaleString()}`} icon={TrendingUp} iconContainerClassName="bg-teal-100" iconClassName="text-teal-500" size="md" />
         <StatCard label="Online Revenue" value={`₱${data.online_revenue.toLocaleString()}`} icon={Users} iconContainerClassName="bg-blue-100" iconClassName="text-blue-500" size="md" />
         <StatCard label="Walk-in Revenue" value={`₱${data.walkin_revenue.toLocaleString()}`} icon={UserPlus} iconContainerClassName="bg-purple-100" iconClassName="text-purple-500" size="md" />
       </div>
@@ -606,7 +606,7 @@ function AppointmentsPanel({ data, granularity }: { data: ReportAppointments; gr
   };
 
   const peakHourConfig: ChartConfig = {
-    count: { label: "Appointments", color: "#3b82f6" },
+    count: { label: "Bookings", color: "#3b82f6" },
   };
 
   const totalCompleted = data.completed;
@@ -634,7 +634,7 @@ function AppointmentsPanel({ data, granularity }: { data: ReportAppointments; gr
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ChartCard title="Appointment Volume">
+        <ChartCard title="Booking Volume">
           <ChartContainer config={appointmentConfig} className="h-[250px] w-full">
             <BarChart data={data.by_date} margin={{ bottom: 8 }}>
               <CartesianGrid vertical={false} strokeDasharray="4 4" />
@@ -692,7 +692,7 @@ function AppointmentsPanel({ data, granularity }: { data: ReportAppointments; gr
                   content={
                     <ChartTooltipContent
                       labelFormatter={(l) => formatTime12(String(l))}
-                      formatter={(value) => [`${value} appointments`]}
+                      formatter={(value) => [`${value} bookings`]}
                       indicator="dot"
                     />
                   }
@@ -803,7 +803,7 @@ function BarbersPanel({ data }: { data: ReportBarbers }) {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ChartCard title="Completed Appointments by Barber">
+            <ChartCard title="Completed Bookings by Barber">
               <ChartContainer config={barberConfig} className="h-[250px] w-full">
                 <BarChart data={data.barbers} layout="vertical" barSize={20}>
                   <CartesianGrid horizontal={false} strokeDasharray="4 4" />
@@ -839,7 +839,7 @@ function BarbersPanel({ data }: { data: ReportBarbers }) {
                 </h3>
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                   <div>
-                    <dt className="text-xs text-gray-500">Appointments</dt>
+                    <dt className="text-xs text-gray-500">Bookings</dt>
                     <dd className="mt-0.5 font-medium text-gray-900">
                       {barber.completed_count}
                     </dd>
@@ -879,7 +879,7 @@ function BarbersPanel({ data }: { data: ReportBarbers }) {
               <thead>
                 <tr className="border-b border-gray-200 text-left text-gray-500">
                   <th className="px-4 py-3 font-medium">Barber</th>
-                  <th className="px-4 py-3 font-medium text-right">Appointments</th>
+                  <th className="px-4 py-3 font-medium text-right">Bookings</th>
                   <th className="px-4 py-3 font-medium text-right">Revenue</th>
                   <th className="px-4 py-3 font-medium text-right">Rating</th>
                   <th className="px-4 py-3 font-medium text-right">Completion</th>
@@ -937,7 +937,7 @@ function CustomersPanel({ data }: { data: ReportCustomers }) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
           <h3 className="text-base font-bold text-gray-900">Returning Customer Rate</h3>
           <p className="mt-1 text-sm leading-relaxed text-gray-500">
-            The percentage of verified-email booking customers in this period who also had an earlier appointment.
+            The percentage of verified-email booking customers in this period who also had an earlier booking.
           </p>
           <div className="mt-5 flex items-end justify-between gap-4">
             <div className="text-3xl font-bold text-blue-600">{data.repeat_rate}%</div>

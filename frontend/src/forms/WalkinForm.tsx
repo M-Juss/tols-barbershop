@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CircleCheckBig, UserPlus } from "lucide-react";
 import { SubmitErrorHandler, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,8 @@ import {
   type Barber,
   type Service,
 } from "@/services/shared/appointment.api";
+import { getScheduleDay } from "@/services/manager/booking-schedule.api";
+import { formatTime12 } from "@/lib/time-slots";
 import {
   walkinSchema,
   type WalkinSchemaValues,
@@ -26,33 +28,6 @@ import {
   sanitizeText,
 } from "@/lib/sanitizer";
 
-function getManilaNow(): string {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Manila",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(now);
-  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-
-  const slots: Record<number, number> = {
-    9: 0, 10: 0, 11: 0, 12: 30,
-    13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0,
-  };
-  const slotHours = Object.keys(slots).map(Number).sort((a, b) => a - b);
-
-  for (let i = slotHours.length - 1; i >= 0; i--) {
-    const sh = slotHours[i];
-    const sm = slots[sh];
-    if (h > sh || (h === sh && m >= sm)) {
-      return `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
-    }
-  }
-  return "09:00";
-}
-
 type WalkinFormProps = {
   onSuccess?: () => Promise<void> | void;
 };
@@ -62,22 +37,7 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  const initialTime = useMemo(() => getManilaNow(), []);
-
-  const timeOptions = useMemo(() => {
-    const slots: { value: string; label: string }[] = [];
-    const add = (h24: number, m: number) => {
-      const period = h24 >= 12 ? "PM" : "AM";
-      const displayH = h24 % 12 || 12;
-      const v = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-      const l = `${displayH}:${String(m).padStart(2, "0")} ${period}`;
-      slots.push({ value: v, label: l });
-    };
-    for (let h = 9; h <= 11; h++) add(h, 0);
-    add(12, 30);
-    for (let h = 13; h <= 19; h++) add(h, 0);
-    return slots;
-  }, []);
+  const [timeOptions, setTimeOptions] = useState<Array<{ value: string; label: string }>>([]);
 
   const {
     register,
@@ -93,7 +53,7 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
       service_id: 0,
       barber_user_id: 0,
       appointment_date: "",
-      appointment_time: initialTime,
+      appointment_time: "",
       price: 0,
       duration_minutes: null,
       notes: "",
@@ -123,6 +83,7 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
 
   const selectedServiceId = useWatch({ control, name: "service_id" });
   const selectedBarberId = useWatch({ control, name: "barber_user_id" });
+  const selectedDateValue = useWatch({ control, name: "appointment_date" });
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const selectedPrice = Number(selectedService?.price ?? 0);
 
@@ -132,6 +93,24 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
       shouldValidate: true,
     });
   }, [selectedPrice, selectedService, setValue]);
+
+  useEffect(() => {
+    if (selectedBarberId <= 0 || !selectedDateValue) {
+      return;
+    }
+
+    void getScheduleDay(selectedDateValue, selectedBarberId)
+      .then((day) => {
+        setTimeOptions(day.time_slots.map((time) => ({
+          value: time,
+          label: formatTime12(time),
+        })));
+      })
+      .catch(() => {
+        setTimeOptions([]);
+        toast.error("Failed to load available schedule times");
+      });
+  }, [selectedBarberId, selectedDateValue]);
 
   const onFormInvalid: SubmitErrorHandler<WalkinSchemaValues> = () => {
     toast.error("All fields are required");
@@ -154,20 +133,19 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
 
       toast.success("Completed walk-in successfully");
       setSelectedDate(undefined);
-      const freshTime = getManilaNow();
       reset({
         customer_name: "",
         service_id: 0,
         barber_user_id: 0,
         appointment_date: "",
-        appointment_time: freshTime,
+        appointment_time: "",
         price: 0,
         duration_minutes: null,
         notes: "",
       });
       await onSuccess?.();
     } catch (error) {
-      console.error("Failed to complete walk-in appointment:", error);
+      console.error("Failed to complete walk-in booking:", error);
       const message =
         error instanceof Error ? error.message : "Failed to complete walk-in";
       toast.error(message);
@@ -179,11 +157,11 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
       <div className="flex items-center gap-2 mb-1">
         <UserPlus className="w-5 h-5 text-gray-700" />
         <h2 className="text-base font-bold text-gray-900">
-          New Walk-in Appointment
+          New Walk-in Booking
         </h2>
       </div>
       <p className="text-sm text-gray-400 mb-6">
-        Create a walk-in appointment with auto-completed status
+        Create a walk-in booking with auto-completed status
       </p>
 
       <form
@@ -223,39 +201,12 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
               });
               setValue("appointment_date", "");
               setSelectedDate(undefined);
+              setTimeOptions([]);
             }}
           />
           {errors.barber_user_id && (
             <p className="absolute left-0 top-full text-red-500 text-xs">
               {errors.barber_user_id.message}
-            </p>
-          )}
-        </div>
-
-        <div className="relative">
-          <DatePickerWithLabel
-            id="walkin-date"
-            label="Date *"
-            placeholder="Select date"
-            date={selectedDate}
-            maxDaysAhead={0}
-            disablePastDates={false}
-            disableSundays={true}
-            disabled={selectedBarberId <= 0}
-            barberId={selectedBarberId > 0 ? selectedBarberId : undefined}
-            onDateChange={(date) => {
-              if (!date) return;
-              const y = date.getFullYear();
-              const m = String(date.getMonth() + 1).padStart(2, "0");
-              const d = String(date.getDate()).padStart(2, "0");
-              const dateStr = `${y}-${m}-${d}`;
-              setValue("appointment_date", dateStr, { shouldValidate: true });
-              setSelectedDate(date);
-            }}
-          />
-          {errors.appointment_date && (
-            <p className="absolute left-0 top-full text-red-500 text-xs">
-              {errors.appointment_date.message}
             </p>
           )}
         </div>
@@ -277,6 +228,36 @@ export function WalkinForm({ onSuccess }: WalkinFormProps) {
           {errors.service_id && (
             <p className="absolute left-0 top-full text-red-500 text-xs">
               {errors.service_id.message}
+            </p>
+          )}
+        </div>
+
+        <div className="relative">
+          <DatePickerWithLabel
+            id="walkin-date"
+            label="Date *"
+            placeholder="Select date"
+            date={selectedDate}
+            maxDaysAhead={0}
+            disablePastDates={false}
+            disableSundays={false}
+            disabled={selectedBarberId <= 0}
+            barberId={selectedBarberId > 0 ? selectedBarberId : undefined}
+            onDateChange={(date) => {
+              if (!date) return;
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, "0");
+              const d = String(date.getDate()).padStart(2, "0");
+              const dateStr = `${y}-${m}-${d}`;
+              setValue("appointment_date", dateStr, { shouldValidate: true });
+              setValue("appointment_time", "", { shouldValidate: true });
+              setTimeOptions([]);
+              setSelectedDate(date);
+            }}
+          />
+          {errors.appointment_date && (
+            <p className="absolute left-0 top-full text-red-500 text-xs">
+              {errors.appointment_date.message}
             </p>
           )}
         </div>

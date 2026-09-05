@@ -21,6 +21,7 @@ use App\Http\Controllers\PublicBookingController;
 use App\Http\Controllers\PublicBootstrapController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ScheduleOpenSlotController;
 use App\Http\Controllers\ServiceAddOnController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\SettingsController;
@@ -107,6 +108,19 @@ Route::prefix('v1')->group(function () {
             ->middlewareFor(['index'], ['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read'])
             ->middlewareFor(['show'], ['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read'])
             ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+        Route::get('/booking-schedule', [SettingsController::class, 'show'])
+            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+        Route::get('/booking-schedule/day', [SettingsController::class, 'day'])
+            ->middleware(['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read']);
+        Route::put('/booking-schedule', [SettingsController::class, 'update'])
+            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+        Route::get('/schedule-open-slots', [ScheduleOpenSlotController::class, 'index'])
+            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+        Route::post('/schedule-open-slots', [ScheduleOpenSlotController::class, 'store'])
+            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+        Route::delete('/schedule-open-slots/{scheduleOpenSlot}', [ScheduleOpenSlotController::class, 'destroy'])
+            ->whereNumber('scheduleOpenSlot')
+            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
         Route::get('/closed-dates/activity', [ClosedDatesController::class, 'activity'])
             ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
         Route::get('/closed-dates/check-conflicts', [ClosedDatesController::class, 'checkConflicts'])

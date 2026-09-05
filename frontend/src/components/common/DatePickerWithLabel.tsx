@@ -31,6 +31,7 @@ type DatePickerWithLabelProps = {
   disabled?: boolean;
   barberId?: number;
   closedDates?: string[];
+  isDateDisabled?: (date: Date) => boolean;
 };
 
 export function DatePickerWithLabel({
@@ -45,6 +46,7 @@ export function DatePickerWithLabel({
   disabled = false,
   barberId,
   closedDates: providedClosedDates,
+  isDateDisabled,
 }: DatePickerWithLabelProps) {
   const [open, setOpen] = useState(false);
   const [fetchedClosedDates, setFetchedClosedDates] = useState<string[]>([]);
@@ -142,8 +144,9 @@ export function DatePickerWithLabel({
 
                 const dayString = formatDateToLocal(day);
                 const isClosedDate = closedDates.includes(dayString);
+                const isDisabledBySchedule = isDateDisabled?.(day) ?? false;
 
-                return isPast || isAfterMax || isSunday || isClosedDate;
+                return isPast || isAfterMax || isSunday || isClosedDate || isDisabledBySchedule;
               })
             }
             initialFocus

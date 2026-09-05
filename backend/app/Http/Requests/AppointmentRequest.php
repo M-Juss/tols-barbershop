@@ -3,7 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\SanitizesInput;
-use App\Models\ClosedDates;
+use App\Services\BookingScheduleService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -69,28 +69,8 @@ class AppointmentRequest extends FormRequest
                         return;
                     }
 
-                    $date = Carbon::parse($value, $shopTimezone);
-                    if ($date->isSunday()) {
-                        $fail('The barbershop is closed on Sundays.');
-
-                        return;
-                    }
-
                     $barberUserId = (int) $this->input('barber_user_id');
-                    $isClosed = ClosedDates::where('date_closed', $value)
-                        ->where('is_removed', false)
-                        ->where(function ($query) use ($barberUserId): void {
-                            $query
-                                ->where('closure_scope', 'shop')
-                                ->orWhere(function ($barberQuery) use ($barberUserId): void {
-                                    $barberQuery
-                                        ->where('closure_scope', 'barber')
-                                        ->where('barber_user_id', $barberUserId);
-                                });
-                        })
-                        ->exists();
-
-                    if ($isClosed) {
+                    if (app(BookingScheduleService::class)->startTimesFor($value, $barberUserId) === []) {
                         $fail('The selected barber is unavailable on this date.');
                     }
                 },
@@ -104,8 +84,15 @@ class AppointmentRequest extends FormRequest
                         return;
                     }
 
-                    if (preg_match('/^(09|1[0-1]):00$|^12:30$|^(1[3-9]):00$/', $value) !== 1) {
-                        $fail('Appointment time must be on the hour from 09:00 through 19:00.');
+                    $date = (string) $this->input('appointment_date');
+                    $barberUserId = (int) $this->input('barber_user_id');
+
+                    if ($date === '' || $barberUserId < 1) {
+                        return;
+                    }
+
+                    if (! app(BookingScheduleService::class)->isStartTimeAllowed($date, $barberUserId, $value)) {
+                        $fail('The selected start time is not available.');
                     }
                 },
             ],
@@ -167,6 +154,14 @@ class AppointmentRequest extends FormRequest
                 'string',
                 'max:500',
             ],
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'appointment_date' => 'booking date',
+            'appointment_time' => 'booking time',
         ];
     }
 }

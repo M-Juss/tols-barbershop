@@ -87,7 +87,7 @@ export default function AdminLayout({
 
       if (!isFirstLoadRef.current && pendingAppointments > prevCountRef.current) {
         const diff = pendingAppointments - prevCountRef.current;
-        toast(`${diff} New Pending Appointment${diff > 1 ? "s" : ""}`, {
+        toast(`${diff} New Pending Booking${diff > 1 ? "s" : ""}`, {
           description: `A customer has submitted a new booking request.`,
           action: {
             label: "View",

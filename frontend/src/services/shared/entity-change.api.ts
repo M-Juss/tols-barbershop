@@ -4,6 +4,7 @@ export type EntityChangeVersions = {
   appointments: string;
   notifications: string;
   closed_dates: string;
+  booking_schedule: string;
   barbers: string;
   services: string;
   gallery_images: string;

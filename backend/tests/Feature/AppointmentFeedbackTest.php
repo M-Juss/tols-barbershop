@@ -79,6 +79,67 @@ test('featured five star feedback is available to public landing endpoints', fun
         ->assertJsonCount(1, 'data.feedback');
 });
 
+test('public bootstrap gives featured feedback priority over the fallback rating', function () {
+    $customer = createFeedbackTestCustomer('bootstrap-priority-customer@example.test');
+    $barber = createFeedbackTestUser('barber', 'bootstrap-priority-barber@example.test');
+    $service = createFeedbackTestService();
+    $featured = createFeedbackListRecord(
+        $customer,
+        $barber,
+        $service,
+        4,
+        true,
+        'Featured customer story',
+        '2026-07-15 10:00:00',
+    );
+    createFeedbackListRecord(
+        $customer,
+        $barber,
+        $service,
+        5,
+        false,
+        'Fallback customer story',
+        '2026-07-15 11:00:00',
+    );
+
+    $this->getJson('/api/v1/public-bootstrap')
+        ->assertOk()
+        ->assertJsonCount(1, 'data.featured_feedback')
+        ->assertJsonCount(0, 'data.feedback')
+        ->assertJsonPath('data.featured_feedback.0.id', $featured->id);
+});
+
+test('public bootstrap returns one random five-star feedback when none is featured', function () {
+    $customer = createFeedbackTestCustomer('bootstrap-fallback-customer@example.test');
+    $barber = createFeedbackTestUser('barber', 'bootstrap-fallback-barber@example.test');
+    $service = createFeedbackTestService();
+    $fallback = createFeedbackListRecord(
+        $customer,
+        $barber,
+        $service,
+        5,
+        false,
+        'Fallback customer story',
+        '2026-07-15 10:00:00',
+    );
+    createFeedbackListRecord(
+        $customer,
+        $barber,
+        $service,
+        4,
+        false,
+        'Non-five-star customer story',
+        '2026-07-15 11:00:00',
+    );
+
+    $this->getJson('/api/v1/public-bootstrap')
+        ->assertOk()
+        ->assertJsonCount(0, 'data.featured_feedback')
+        ->assertJsonCount(1, 'data.feedback')
+        ->assertJsonPath('data.feedback.0.id', $fallback->id)
+        ->assertJsonPath('data.feedback.0.rating', 5);
+});
+
 test('manager can feature submitted feedback for the landing page', function () {
     $customer = createFeedbackTestCustomer('public-feedback-customer@example.test');
     $customer->update(['fullname' => 'Jamie Marie Rivera']);

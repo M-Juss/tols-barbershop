@@ -584,7 +584,7 @@ class AnalyticsReportService
             $insights[] = [
                 'label' => 'Busiest Day',
                 'value' => Carbon::parse($busiestDay->appointment_date)->format('l, M j, Y'),
-                'detail' => "{$busiestDay->count} appointment".($busiestDay->count !== 1 ? 's' : ''),
+                'detail' => "{$busiestDay->count} booking".($busiestDay->count !== 1 ? 's' : ''),
             ];
         }
 
@@ -605,7 +605,7 @@ class AnalyticsReportService
             $insights[] = [
                 'label' => 'Peak Hour',
                 'value' => "{$hour12}:{$minute} {$ampm}",
-                'detail' => "{$peakHour->count} appointment".($peakHour->count !== 1 ? 's' : ''),
+                'detail' => "{$peakHour->count} booking".($peakHour->count !== 1 ? 's' : ''),
             ];
         }
 
@@ -639,7 +639,7 @@ class AnalyticsReportService
             $insights[] = [
                 'label' => 'Top Performing Barber',
                 'value' => $this->getBarberName($topBarber->barber_user_id),
-                'detail' => "{$topBarber->count} completed appointment".($topBarber->count !== 1 ? 's' : ''),
+                'detail' => "{$topBarber->count} completed booking".($topBarber->count !== 1 ? 's' : ''),
             ];
         }
 

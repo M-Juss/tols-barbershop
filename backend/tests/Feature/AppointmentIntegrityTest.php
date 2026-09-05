@@ -316,7 +316,7 @@ test('only terminal appointments can be soft archived with the acting staff reco
 
     $this->deleteJson("/api/v1/appointments/{$completed->id}")
         ->assertOk()
-        ->assertJsonPath('message', 'Appointment archived successfully.');
+        ->assertJsonPath('message', 'Booking archived successfully.');
 
     expect(Appointment::find($completed->id))->toBeNull();
     $archived = Appointment::withTrashed()->findOrFail($completed->id);

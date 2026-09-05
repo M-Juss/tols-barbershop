@@ -47,7 +47,7 @@ export function ServicesSection() {
           <SectionHeading
             eyebrow="Precision in every cut"
             title="Our Services"
-            description="Thoughtful grooming, sharp details, and dependable results in every appointment."
+            description="Thoughtful grooming, sharp details, and dependable results in every booking."
           />
         </FadeIn>
 

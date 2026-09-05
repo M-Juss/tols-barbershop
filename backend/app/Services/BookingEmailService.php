@@ -76,13 +76,13 @@ class BookingEmailService
             'heading' => 'Booking Request Received',
             'customerName' => $appointment->bookingCustomer?->fullname ?? $appointment->customerDisplayName() ?? 'there',
             'intro' => $count > 1
-                ? "Your group booking request for {$count} appointments is pending staff confirmation."
-                : 'Your appointment request is pending staff confirmation.',
+                ? "Your group booking request for {$count} bookings is pending staff confirmation."
+                : 'Your booking request is pending staff confirmation.',
             'highlight' => $reference,
             'details' => [
                 'Date' => $appointment->appointment_date->format('F j, Y'),
                 'Barber' => $appointment->barber?->fullname ?? '—',
-                'Appointments' => (string) $count,
+                'Bookings' => (string) $count,
             ],
             'footer' => 'We will email you when the booking is confirmed or rejected.',
         ];

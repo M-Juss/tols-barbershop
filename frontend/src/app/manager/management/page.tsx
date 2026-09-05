@@ -41,7 +41,7 @@ export default function Management() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Management</h1>
-            <p className="text-gray-500 mt-1">Manage services, gallery images, admins, barbers, and appointment slots</p>
+            <p className="text-gray-500 mt-1">Manage services, gallery images, admins, barbers, and booking slots</p>
           </div>
         </div>
 

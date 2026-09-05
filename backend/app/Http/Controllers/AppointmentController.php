@@ -14,6 +14,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\AppointmentBookingService;
 use App\Services\AppointmentNotificationService;
+use App\Services\BookingScheduleService;
 use App\Support\EntityChange;
 use App\Traits\ApiResponseTrait;
 use Carbon\Carbon;
@@ -30,23 +31,12 @@ class AppointmentController extends Controller
 
     private const DASHBOARD_SLOT_STATUSES = ['completed', 'confirmed', 'pending', 'no_show'];
 
-    private const DASHBOARD_SLOTS = [
-        ['value' => '09:00', 'label' => '9:00 AM'],
-        ['value' => '10:00', 'label' => '10:00 AM'],
-        ['value' => '11:00', 'label' => '11:00 AM'],
-        ['value' => '12:30', 'label' => '12:30 PM'],
-        ['value' => '13:00', 'label' => '1:00 PM'],
-        ['value' => '14:00', 'label' => '2:00 PM'],
-        ['value' => '15:00', 'label' => '3:00 PM'],
-        ['value' => '16:00', 'label' => '4:00 PM'],
-        ['value' => '17:00', 'label' => '5:00 PM'],
-        ['value' => '18:00', 'label' => '6:00 PM'],
-        ['value' => '19:00', 'label' => '7:00 PM'],
-    ];
+    private array $scheduleTimesCache = [];
 
     public function __construct(
         private readonly AppointmentBookingService $bookingService,
         private readonly AppointmentNotificationService $appointmentNotificationService,
+        private readonly BookingScheduleService $scheduleService,
     ) {}
 
     /**
@@ -130,7 +120,7 @@ class AppointmentController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $validated['page'] ?? 1);
 
-        return $this->success('Appointment history retrieved successfully.', [
+        return $this->success('Booking history retrieved successfully.', [
             'appointments' => AppointmentResource::collection($appointments),
             'meta' => [
                 'current_page' => $appointments->currentPage(),
@@ -152,7 +142,7 @@ class AppointmentController extends Controller
         $canManage = in_array($authUser?->role, ['admin', 'manager'], true);
 
         if (! $canManage) {
-            abort(403, 'Only staff may create appointments from this endpoint.');
+            abort(403, 'Only staff may create bookings from this endpoint.');
         }
 
         $this->assertStaffCanCreateType($authUser, $isWalkin ? 'walkin' : 'appointment');
@@ -239,7 +229,7 @@ class AppointmentController extends Controller
             }, 3);
         } catch (UniqueConstraintViolationException) {
             return response()->json([
-                'message' => 'Selected barber already has an appointment at this time.',
+                'message' => 'Selected barber already has a booking at this time.',
             ], 422);
         }
 
@@ -277,7 +267,7 @@ class AppointmentController extends Controller
             && ! $snapshot->contains(fn (Appointment $appointment): bool => $appointment->is_walkin);
 
         if (! $isHomogeneousBatch) {
-            return $this->error('This group of appointments cannot be updated together. Please manage them individually.', [], 409);
+            return $this->error('This group of bookings cannot be updated together. Please manage them individually.', [], 409);
         }
 
         $result = DB::transaction(function () use ($batchId, $snapshot, $status, $validated): array {
@@ -389,7 +379,7 @@ class AppointmentController extends Controller
                 $appointment = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
                 if ((int) $appointment->barber_user_id !== (int) $snapshot->barber_user_id) {
                     throw ValidationException::withMessages([
-                        'appointment' => 'The appointment changed while it was being updated. Please retry.',
+                        'appointment' => 'The booking changed while it was being updated. Please retry.',
                     ]);
                 }
 
@@ -399,14 +389,14 @@ class AppointmentController extends Controller
 
                 if ((int) ($validated['booking_customer_id'] ?? 0) !== (int) $appointment->booking_customer_id) {
                     throw ValidationException::withMessages([
-                        'booking_customer_id' => 'An appointment cannot be transferred to another customer.',
+                        'booking_customer_id' => 'A booking cannot be transferred to another customer.',
                     ]);
                 }
 
                 if (array_key_exists('is_walkin', $validated)
                     && (bool) $validated['is_walkin'] !== (bool) $appointment->is_walkin) {
                     throw ValidationException::withMessages([
-                        'is_walkin' => 'The appointment type cannot be changed.',
+                        'is_walkin' => 'The booking type cannot be changed.',
                     ]);
                 }
 
@@ -421,13 +411,13 @@ class AppointmentController extends Controller
                     ->toDateString();
                 if ($detailsChanged && $originalStatus === 'confirmed' && $originalDate < $today) {
                     throw ValidationException::withMessages([
-                        'appointment' => 'Past-due appointments cannot be rescheduled.',
+                        'appointment' => 'Past-due bookings cannot be rescheduled.',
                     ]);
                 }
 
                 if ($detailsChanged && ! in_array($nextStatus, AppointmentBookingService::ACTIVE_STATUSES, true)) {
                     throw ValidationException::withMessages([
-                        'appointment' => 'Completed or cancelled appointments cannot be rescheduled.',
+                        'appointment' => 'Completed or cancelled bookings cannot be rescheduled.',
                     ]);
                 }
 
@@ -513,7 +503,7 @@ class AppointmentController extends Controller
             }, 3);
         } catch (UniqueConstraintViolationException) {
             return response()->json([
-                'message' => 'Selected barber already has an appointment at this time.',
+                'message' => 'Selected barber already has a booking at this time.',
             ], 422);
         }
 
@@ -573,14 +563,14 @@ class AppointmentController extends Controller
 
         if (! $result['archived']) {
             return response()->json([
-                'message' => 'Pending or confirmed appointments must be cancelled or rejected before archiving.',
+                'message' => 'Pending or confirmed bookings must be cancelled or rejected before archiving.',
             ], 422);
         }
 
         EntityChange::dispatch('appointments');
 
         return response()->json([
-            'message' => 'Appointment archived successfully.',
+            'message' => 'Booking archived successfully.',
         ]);
     }
 
@@ -762,9 +752,10 @@ class AppointmentController extends Controller
                 $activeBarberIds,
                 $barberClosedDateMap[$dateKey] ?? [],
             ));
-            $isClosed = $date->isSunday()
-                || isset($shopClosedDateMap[$dateKey])
-                || $availableBarberIds === [];
+            $dateSlots = $this->dashboardSlotsForDate($dateKey, $availableBarberIds);
+            $isClosed = isset($shopClosedDateMap[$dateKey])
+                || $availableBarberIds === []
+                || $dateSlots === [];
             $isPast = $date->lt($today);
             $dayAppointments = $activeAppointmentsByDate->get($dateKey, new Collection);
             $occupiedIntervals = $this->dashboardOccupiedIntervals($dayAppointments);
@@ -772,15 +763,20 @@ class AppointmentController extends Controller
             $availableSlots = 0;
 
             if (! $isClosed && ! $isPast) {
-                foreach (self::DASHBOARD_SLOTS as $slot) {
+                foreach ($dateSlots as $slot) {
                     $slotMinutes = $this->dashboardTimeToMinutes($slot['value']);
                     if ($this->dashboardSlotIsPast($date, $slotMinutes, $now)) {
                         continue;
                     }
 
-                    $totalSlots += count($availableBarberIds);
-                    $availableSlots += $this->dashboardAvailableBarberCount(
+                    $eligibleBarberIds = $this->dashboardEligibleBarberIds(
+                        $dateKey,
+                        $slot['value'],
                         $availableBarberIds,
+                    );
+                    $totalSlots += count($eligibleBarberIds);
+                    $availableSlots += $this->dashboardAvailableBarberCount(
+                        $eligibleBarberIds,
                         $occupiedIntervals,
                         $slotMinutes,
                     );
@@ -820,9 +816,9 @@ class AppointmentController extends Controller
             $activeBarberIds,
             $barberClosedDateMap[$selectedDateKey] ?? [],
         ));
-        $selectedDateIsClosed = $selectedDate->isSunday()
-            || isset($shopClosedDateMap[$selectedDateKey])
-            || $selectedAvailableBarberIds === [];
+        $selectedDateIsClosed = isset($shopClosedDateMap[$selectedDateKey])
+            || $selectedAvailableBarberIds === []
+            || $this->dashboardSlotsForDate($selectedDateKey, $selectedAvailableBarberIds) === [];
 
         return response()->json([
             'selected_date' => $selectedDateKey,
@@ -881,7 +877,13 @@ class AppointmentController extends Controller
         }
 
         $slots = [];
-        foreach (self::DASHBOARD_SLOTS as $slot) {
+        $activeBarberIds = User::query()
+            ->where('role', 'barber')
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+        foreach ($this->dashboardSlotsForDate($date, $activeBarberIds) as $slot) {
             $appts = $slotMap[$slot['label']] ?? [];
             $slots[] = [
                 'time' => $slot['label'],
@@ -907,31 +909,22 @@ class AppointmentController extends Controller
                 'required',
                 'date_format:Y-m-d',
                 'after_or_equal:'.Carbon::today((string) config('app.shop_timezone', 'Asia/Manila'))->toDateString(),
-                'before_or_equal:'.Carbon::today((string) config('app.shop_timezone', 'Asia/Manila'))->addDays(AppointmentBookingService::MAX_BOOKING_DAYS_AHEAD)->toDateString(),
+                'before_or_equal:'.Carbon::today((string) config('app.shop_timezone', 'Asia/Manila'))->addDays($this->scheduleService->bookingDaysAhead())->toDateString(),
             ],
             'ignore_appointment_id' => ['sometimes', 'integer', 'exists:appointments,id'],
         ]);
 
         if (isset($validated['ignore_appointment_id'])
             && ! in_array($request->user()?->role, ['admin', 'manager'], true)) {
-            abort(403, 'Only staff may exclude an appointment while checking a reschedule.');
+            abort(403, 'Only staff may exclude a booking while checking a reschedule.');
         }
 
-        $hasClosure = ClosedDates::query()
-            ->where('date_closed', $validated['date'])
-            ->where('is_removed', false)
-            ->where(function ($query) use ($validated): void {
-                $query
-                    ->where('closure_scope', 'shop')
-                    ->orWhere(function ($barberQuery) use ($validated): void {
-                        $barberQuery
-                            ->where('closure_scope', 'barber')
-                            ->where('barber_user_id', $validated['barber_id']);
-                    });
-            })
-            ->exists();
+        $timeSlots = $this->scheduleService->startTimesFor(
+            $validated['date'],
+            (int) $validated['barber_id'],
+        );
 
-        if (Carbon::parse($validated['date'])->isSunday() || $hasClosure) {
+        if ($timeSlots === []) {
             throw ValidationException::withMessages([
                 'date' => 'The selected date is not available for booking.',
             ]);
@@ -959,6 +952,7 @@ class AppointmentController extends Controller
 
         return response()->json([
             'data' => $slots,
+            'time_slots' => $timeSlots,
         ]);
     }
 
@@ -976,7 +970,7 @@ class AppointmentController extends Controller
         $occupiedIntervals = $this->dashboardOccupiedIntervals($activeAppointments);
         $isPastDate = $date->copy()->startOfDay()->lt($now->copy()->startOfDay());
 
-        return collect(self::DASHBOARD_SLOTS)->map(function (array $slot) use (
+        return collect($this->dashboardSlotsForDate($date->toDateString(), $activeBarberIds))->map(function (array $slot) use (
             $activeBarberIds,
             $appointmentsByTime,
             $date,
@@ -987,10 +981,15 @@ class AppointmentController extends Controller
         ): array {
             $slotMinutes = $this->dashboardTimeToMinutes($slot['value']);
             $isPast = $isPastDate || $this->dashboardSlotIsPast($date, $slotMinutes, $now);
+            $eligibleBarberIds = $this->dashboardEligibleBarberIds(
+                $date->toDateString(),
+                $slot['value'],
+                $activeBarberIds,
+            );
             $availableBarbers = $isClosed || $isPast
                 ? 0
                 : $this->dashboardAvailableBarberCount(
-                    $activeBarberIds,
+                    $eligibleBarberIds,
                     $occupiedIntervals,
                     $slotMinutes,
                 );
@@ -1016,15 +1015,45 @@ class AppointmentController extends Controller
                     ->all(),
                 'status' => $slotAppointments->isNotEmpty() ? 'booked' : 'available',
                 'available_barbers' => $availableBarbers,
-                'total_barbers' => count($activeBarberIds),
+                'total_barbers' => count($eligibleBarberIds),
                 'is_past' => $isPast,
                 'is_closed' => $isClosed,
                 'is_fully_booked' => ! $isClosed
                     && ! $isPast
-                    && count($activeBarberIds) > 0
+                    && count($eligibleBarberIds) > 0
                     && $availableBarbers === 0,
             ];
         })->all();
+    }
+
+    private function dashboardSlotsForDate(string $date, array $barberIds): array
+    {
+        return collect($barberIds)
+            ->flatMap(fn (int $barberId): array => $this->scheduleTimesFor($date, $barberId))
+            ->unique()
+            ->sortBy(fn (string $time): int => $this->scheduleService->timeToMinutes($time))
+            ->map(fn (string $time): array => [
+                'value' => $time,
+                'label' => Carbon::createFromFormat('H:i', $time)->format('g:i A'),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function dashboardEligibleBarberIds(string $date, string $time, array $barberIds): array
+    {
+        return array_values(array_filter(
+            $barberIds,
+            fn (int $barberId): bool => in_array($time, $this->scheduleTimesFor($date, $barberId), true),
+        ));
+    }
+
+    private function scheduleTimesFor(string $date, int $barberId): array
+    {
+        $key = $date.'|'.$barberId;
+
+        return $this->scheduleTimesCache[$key]
+            ??= $this->scheduleService->startTimesFor($date, $barberId);
     }
 
     private function dashboardOccupiedIntervals(iterable $appointments): array

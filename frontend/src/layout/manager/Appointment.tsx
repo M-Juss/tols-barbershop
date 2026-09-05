@@ -197,7 +197,7 @@ function ActionMenu({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label="Appointment actions"
+        aria-label="Booking actions"
         className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-400"
       >
         <MoreVertical className="w-4 h-4" />
@@ -224,7 +224,7 @@ function ActionMenu({
             disabled={disabled}
             title={
               disabled
-                ? "Can only mark as completed on or after the appointment date"
+                ? "Can only mark as completed on or after the booking date"
                 : undefined
             }
             className={cn("flex items-center gap-2 w-full px-3 py-2 text-left", disabled ? "text-gray-400 cursor-not-allowed" : "hover:bg-gray-50 text-gray-700")}
@@ -240,7 +240,7 @@ function ActionMenu({
             disabled={disabled}
             title={
               disabled
-                ? "Can only mark as no-show on or after the appointment date"
+                ? "Can only mark as no-show on or after the booking date"
                 : undefined
             }
             className={cn("flex items-center gap-2 w-full px-3 py-2 text-left", disabled ? "text-gray-400 cursor-not-allowed" : "hover:bg-gray-50 text-gray-700")}
@@ -322,12 +322,12 @@ function AppointmentRow({
 
       <div className="mt-4 grid gap-3 border-t border-gray-100 pt-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Service</p>
-          <p className="mt-0.5 break-words text-sm leading-snug text-gray-700">{appt.service.name}</p>
-        </div>
-        <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Barber</p>
           <p className="mt-0.5 break-words text-sm text-gray-700">{appt.barber.fullname}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Service</p>
+          <p className="mt-0.5 break-words text-sm leading-snug text-gray-700">{appt.service.name}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Date</p>
@@ -431,12 +431,12 @@ function PendingCard({
       <div className="border-t border-yellow-200 mb-3" />
       <div className="text-xs text-gray-600 space-y-0.5 mb-4">
         <p>
-          <span className="font-medium text-gray-800">Service:</span>{" "}
-          {req.service.name}
-        </p>
-        <p>
           <span className="font-medium text-gray-800">Barber:</span>{" "}
           {req.barber.fullname}
+        </p>
+        <p>
+          <span className="font-medium text-gray-800">Service:</span>{" "}
+          {req.service.name}
         </p>
         <p>
           <span className="font-medium text-gray-800">Date:</span>{" "}
@@ -456,7 +456,7 @@ function PendingCard({
           <Button
             onClick={() => onApprove(req)}
             disabled={disabled || overdue}
-            title={overdue ? "Cannot confirm an overdue appointment" : undefined}
+            title={overdue ? "Cannot confirm an overdue booking" : undefined}
             className={cn(
               "gap-1.5 text-sm h-9",
               overdue
@@ -556,7 +556,7 @@ export function Appointment() {
       setAppointments(data);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
-        console.error("Failed to load appointments:", error);
+        console.error("Failed to load bookings:", error);
       }
     } finally {
       setLoading(false);
@@ -673,7 +673,7 @@ export function Appointment() {
       const barberUserId = appt.barber.id;
 
       if (!bookingCustomerId || !serviceId || !barberUserId) {
-        toast.error("This appointment is missing required details.");
+        toast.error("This booking is missing required details.");
         return false;
       }
 
@@ -699,26 +699,26 @@ export function Appointment() {
 
       const validation = updateAppointmentSchema.safeParse(payload);
       if (!validation.success) {
-        toast.error("Please check the appointment details and try again.");
+        toast.error("Please check the booking details and try again.");
         return false;
       }
 
       await updateAppointment(appt.id, validation.data);
       const actionMessages: Record<string, string> = {
-        confirmed: "Appointment confirmed",
-        completed: "Appointment marked as completed",
-        cancelled: "Appointment cancelled",
-        rejected: "Appointment rejected",
-        no_show: "Appointment marked as no-show",
+        confirmed: "Booking confirmed",
+        completed: "Booking marked as completed",
+        cancelled: "Booking cancelled",
+        rejected: "Booking rejected",
+        no_show: "Booking marked as no-show",
       };
-      toast.success(actionMessages[status] ?? "Appointment updated");
+      toast.success(actionMessages[status] ?? "Booking updated");
 
       await loadAppointments();
       window.dispatchEvent(new CustomEvent("appointments:updated"));
       return true;
     } catch (error) {
-      console.error("Failed to update appointment:", error);
-      toast.error(error instanceof Error ? error.message : "Could not update appointment. Please try again.");
+      console.error("Failed to update booking:", error);
+      toast.error(error instanceof Error ? error.message : "Could not update booking. Please try again.");
       return false;
     } finally {
       setUpdatingIds((prev) => prev.filter((id) => id !== appt.id));
@@ -734,14 +734,14 @@ export function Appointment() {
 
       await updateBatchAppointmentStatus(batchId, "confirmed");
       toast.success(
-        `${appts.length} appointment${appts.length > 1 ? "s" : ""} confirmed`,
+        `${appts.length} booking${appts.length > 1 ? "s" : ""} confirmed`,
       );
 
       await loadAppointments();
       window.dispatchEvent(new CustomEvent("appointments:updated"));
     } catch (error) {
       console.error("Failed to confirm group:", error);
-      toast.error(error instanceof Error ? error.message : "Could not confirm appointments. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Could not confirm bookings. Please try again.");
     } finally {
       setUpdatingBatchIds((prev) => prev.filter((id) => id !== batchId));
     }
@@ -777,7 +777,7 @@ export function Appointment() {
 
       await updateBatchAppointmentStatus(batchId, "rejected", reason);
       toast.success(
-        `${appts.length} appointment${appts.length > 1 ? "s" : ""} rejected`,
+        `${appts.length} booking${appts.length > 1 ? "s" : ""} rejected`,
       );
 
       setBatchRejectDialogOpen(false);
@@ -787,7 +787,7 @@ export function Appointment() {
       window.dispatchEvent(new CustomEvent("appointments:updated"));
     } catch (error) {
       console.error("Failed to batch reject:", error);
-      toast.error(error instanceof Error ? error.message : "Could not reject appointments. Please try again.");
+      toast.error(error instanceof Error ? error.message : "Could not reject bookings. Please try again.");
     } finally {
       setUpdatingBatchIds((prev) => prev.filter((id) => id !== batchId));
     }
@@ -915,15 +915,15 @@ export function Appointment() {
       }
 
       await updateAppointment(rescheduleAppointment.id, validation.data);
-      toast.success("Appointment rescheduled successfully");
+      toast.success("Booking rescheduled successfully");
 
       setRescheduleDialogOpen(false);
       setRescheduleAppointment(null);
       await loadAppointments();
       window.dispatchEvent(new CustomEvent("appointments:updated"));
     } catch (error) {
-      console.error("Failed to reschedule appointment:", error);
-      toast.error(error instanceof Error ? error.message : "Could not reschedule appointment. Please try again.");
+      console.error("Failed to reschedule booking:", error);
+      toast.error(error instanceof Error ? error.message : "Could not reschedule booking. Please try again.");
     } finally {
       setUpdatingIds((prev) => prev.filter((id) => id !== rescheduleAppointment.id));
     }
@@ -950,7 +950,7 @@ export function Appointment() {
           Schedules
         </h1>
         <p className="text-gray-500 mt-1">
-          Manage appointment requests and scheduled appointments
+          Manage booking requests and scheduled bookings
         </p>
       </div>
 
@@ -1015,8 +1015,8 @@ export function Appointment() {
 
         <div className="flex flex-col gap-4 lg:order-1">
           <SectionCard
-            title="Confirmed Appointments"
-            description="Scheduled appointments grouped by date"
+            title="Confirmed Bookings"
+            description="Scheduled bookings grouped by date"
           >
 
             <div className="relative mb-5 w-full">
@@ -1028,8 +1028,8 @@ export function Appointment() {
                   setAppointmentSearch(event.target.value);
                   setConfirmedPage(1);
                 }}
-                placeholder="Search appointments by customer, service, barber, date, or ID"
-                aria-label="Search confirmed appointments"
+                placeholder="Search bookings by customer, service, barber, date, or ID"
+                aria-label="Search confirmed bookings"
                 className="h-9 pl-9"
                 maxLength={100}
               />
@@ -1037,17 +1037,17 @@ export function Appointment() {
 
             {appointmentLoading ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-                <p className="text-sm">Loading appointments...</p>
+                <p className="text-sm">Loading bookings...</p>
               </div>
             ) : confirmedAppointments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <CalendarDays className="w-10 h-10 mb-2 opacity-20" />
-                <p className="text-sm">No appointments scheduled.</p>
+                <p className="text-sm">No bookings scheduled.</p>
               </div>
             ) : filteredConfirmedAppointments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Search className="mb-2 h-10 w-10 opacity-20" />
-                <p className="text-sm">No appointments match your search.</p>
+                <p className="text-sm">No bookings match your search.</p>
               </div>
             ) : (
               <>
@@ -1068,7 +1068,7 @@ export function Appointment() {
                               {group.label}
                             </span>
                             <span className="text-xs text-gray-400">
-                              {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0)} appointment
+                              {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0)} booking
                               {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0) !== 1 ? "s" : ""}
                             </span>
                           </div>
@@ -1200,7 +1200,7 @@ export function Appointment() {
                                 {group.label}
                               </span>
                               <span className="text-xs text-red-400">
-                                {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0)} appointment
+                                {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0)} booking
                                 {group.barberGroups.reduce((sum, bg) => sum + bg.appointments.length, 0) !== 1 ? "s" : ""}
                               </span>
                             </div>
@@ -1280,10 +1280,10 @@ export function Appointment() {
             <DialogTitle>
               {approveTarget && approveTarget.length > 1
                 ? "Confirm Group Booking"
-                : "Confirm Appointment"}
+                : "Confirm Booking"}
             </DialogTitle>
             <DialogDescription>
-              Confirm {approveTarget?.length ?? 0} appointment
+              Confirm {approveTarget?.length ?? 0} booking
               {(approveTarget?.length ?? 0) === 1 ? "" : "s"}. This reserves the
               selected time {approveTarget && approveTarget.length > 1 ? "slots" : "slot"}.
             </DialogDescription>
@@ -1327,7 +1327,7 @@ export function Appointment() {
           <DialogHeader>
             <DialogTitle>Confirm Action</DialogTitle>
             <DialogDescription>
-              Are you sure you want to mark this appointment as{" "}
+              Are you sure you want to mark this booking as{" "}
               {confirmActionTarget?.status === "completed"
                 ? "Completed"
                 : "No-show"}
@@ -1341,12 +1341,12 @@ export function Appointment() {
                 {confirmActionTarget.appt.customer.fullname}
               </p>
               <p>
-                <span className="font-medium">Service:</span>{" "}
-                {confirmActionTarget.appt.service.name}
-              </p>
-              <p>
                 <span className="font-medium">Barber:</span>{" "}
                 {confirmActionTarget.appt.barber.fullname}
+              </p>
+              <p>
+                <span className="font-medium">Service:</span>{" "}
+                {confirmActionTarget.appt.service.name}
               </p>
               <p>
                 <span className="font-medium">Date:</span>{" "}
@@ -1405,13 +1405,13 @@ export function Appointment() {
           <DialogHeader>
             <DialogTitle>Reject Group Booking</DialogTitle>
             <DialogDescription>
-              Reject {batchRejectTarget?.length ?? 0} appointments from{" "}
+              Reject {batchRejectTarget?.length ?? 0} bookings from{" "}
               {batchRejectTarget?.[0]?.customer.fullname ?? "this customer"}.
             </DialogDescription>
           </DialogHeader>
           {batchRejectTarget && (
             <div className="rounded-lg border border-gray-200 p-4 space-y-2 text-sm">
-              <p className="font-medium text-gray-700">Appointments to reject:</p>
+              <p className="font-medium text-gray-700">Bookings to reject:</p>
               {batchRejectTarget.map((appt) => (
                 <div key={appt.id} className="flex items-center justify-between text-gray-600">
                   <span>{appt.customer_name ?? appt.customer.fullname}</span>

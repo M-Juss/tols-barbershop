@@ -88,10 +88,10 @@ export function PendingAppointmentDetailDialog({
             </span>
             <div className="min-w-0 space-y-1.5">
               <DialogTitle className="text-lg font-semibold text-gray-950">
-                {isGroup ? "Group booking request" : "Appointment request"}
+                {isGroup ? "Group booking request" : "Booking request"}
               </DialogTitle>
               <DialogDescription>
-                Review {sortedAppointments.length} appointment
+                Review {sortedAppointments.length} booking
                 {sortedAppointments.length === 1 ? "" : "s"} before taking action.
               </DialogDescription>
             </div>
@@ -109,10 +109,15 @@ export function PendingAppointmentDetailDialog({
                   <Scissors className="size-4 text-amber-700" />
                   {displayString(first.barber.fullname, "Unassigned barber")}
                 </p>
+                <p className="mt-3 flex items-center gap-2 font-semibold text-gray-950">
+                  <Scissors className="size-4 text-amber-700" />
+                  {isGroup ? "Multiple services" : displayString(first.service.name, "Unknown service")}
+                </p>
                 <p className="mt-3 font-semibold text-gray-950">
                   {formatDate(first.appointment_date)}
                 </p>
                 <p className="mt-1 text-sm text-gray-600">
+                  <span className="font-medium text-gray-800">Time:</span>{" "}
                   {sortedAppointments
                     .map((appointment) => formatTime12(appointment.appointment_time))
                     .join(" & ")}
@@ -196,7 +201,7 @@ export function PendingAppointmentDetailDialog({
             <section>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-gray-950">
-                  {isGroup ? "Group members" : "Appointment details"}
+                  {isGroup ? "Group members" : "Booking details"}
                 </h3>
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
                   {sortedAppointments.length}
