@@ -79,10 +79,27 @@ export const getLandingGalleryImages = async (): Promise<
   return (await getLandingBootstrap()).gallery_images ?? [];
 };
 
+async function getPublicFeedback(
+  endpoint: "/public-feedback" | "/featured-feedback",
+): Promise<LandingFeedback[]> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (!apiUrl) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured");
+  }
+
+  const result = await publicFetch(`${apiUrl}${endpoint}`, {
+    cache: "no-store",
+  });
+  const data = (result.data ?? result) as { feedback?: LandingFeedback[] };
+
+  return data.feedback ?? [];
+}
+
 export const getLandingFeedback = async (): Promise<LandingFeedback[]> => {
-  return (await getLandingBootstrap()).feedback ?? [];
+  return getPublicFeedback("/public-feedback");
 };
 
 export const getFeaturedFeedback = async (): Promise<LandingFeedback[]> => {
-  return (await getLandingBootstrap()).featured_feedback ?? [];
+  return getPublicFeedback("/featured-feedback");
 };

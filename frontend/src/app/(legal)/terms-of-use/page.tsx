@@ -27,7 +27,7 @@ export default function TermsOfUsePage() {
         <p>
           You must provide accurate information and verify the submitted email with
           the one-time code we send. Verification proves access to the email inbox;
-          it does not confirm the appointment. The requested slot is checked again
+          it does not confirm the booking. The requested slot is checked again
           after verification and is not reserved while you enter the code.
         </p>
       </section>
@@ -36,7 +36,7 @@ export default function TermsOfUsePage() {
         <h2>3. Pending and confirmed bookings</h2>
         <p>
           Every submitted request starts as <strong>pending</strong>. It becomes a
-          confirmed appointment only after authorized staff confirm it. Staff may
+          confirmed booking only after authorized staff confirm it. Staff may
           reject or reschedule a request due to availability, closures, conflicts,
           safety, or other reasonable operational needs. Updates are sent to the
           verified booking email, so you are responsible for checking that inbox.

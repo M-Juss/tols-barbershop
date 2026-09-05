@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -66,13 +66,9 @@ export function AppointmentAddOnDialog({
     };
   }, [open]);
 
-  const appliedIds = useMemo(
-    () => new Set((appointment?.add_ons ?? []).map((addOn) => addOn.add_on_id)),
-    [appointment?.add_ons],
-  );
-
   const handleAdd = async (addOnId: number) => {
-    if (!appointment) return;
+    if (!appointment || busyKey !== null) return;
+
     setBusyKey("add-" + addOnId);
     try {
       const updated = await addAppointmentAddOn(appointment.id, addOnId);
@@ -109,7 +105,7 @@ export function AppointmentAddOnDialog({
         <DialogHeader>
           <DialogTitle>Add-ons</DialogTitle>
           <DialogDescription>
-            Apply optional services to {appointment?.customer.fullname ?? "this appointment"}.
+            Apply optional services to {appointment?.customer.fullname ?? "this booking"}.
             The confirmed total updates immediately.
           </DialogDescription>
         </DialogHeader>
@@ -164,14 +160,12 @@ export function AppointmentAddOnDialog({
             <p className="text-sm font-semibold text-gray-800">Available add-ons</p>
             {loading ? (
               <p className="text-sm text-gray-500">Loading add-ons...</p>
-            ) : availableAddOns.filter(
-                (addOn) => addOn.is_active && !appliedIds.has(addOn.id),
-              ).length === 0 ? (
+            ) : availableAddOns.filter((addOn) => addOn.is_active).length === 0 ? (
               <p className="text-sm text-gray-500">No additional active add-ons available.</p>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2">
                 {availableAddOns
-                  .filter((addOn) => addOn.is_active && !appliedIds.has(addOn.id))
+                  .filter((addOn) => addOn.is_active)
                   .map((addOn) => (
                     <div
                       key={addOn.id}

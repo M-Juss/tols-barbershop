@@ -22,7 +22,7 @@ import {
 import { useRateLimit } from "@/hooks/useRateLimit";
 import { sanitizeText } from "@/lib/sanitizer";
 import { cn } from "@/lib/utils";
-import { formatTime12, generateTimeOptions, isTimeSlotUnavailable } from "@/lib/time-slots";
+import { formatTime12, isTimeSlotUnavailable } from "@/lib/time-slots";
 import {
   getPublicBookingBootstrap,
   getPublicUnavailableSlots,
@@ -37,7 +37,6 @@ import {
   type PublicService,
 } from "@/services/public-booking.api";
 import { publicBookingSchema } from "@/validations/public-booking.validation";
-import { MAX_BOOKING_DAYS_AHEAD } from "@/validations/appointment.validation";
 
 function toApiDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -92,6 +91,7 @@ export function NewAppointmentForm() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedPublicSlot[]>([]);
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [loading, setLoading] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -130,14 +130,19 @@ export function NewAppointmentForm() {
   useEffect(() => {
     if (!selectedBarber || !selectedDate) {
       setOccupiedSlots([]);
+      setAvailableTimes([]);
       return;
     }
 
     setCheckingAvailability(true);
     void getPublicUnavailableSlots(Number(selectedBarber), toApiDate(selectedDate))
-      .then(setOccupiedSlots)
+      .then((availability) => {
+        setOccupiedSlots(availability.occupied_slots);
+        setAvailableTimes(availability.time_slots);
+      })
       .catch(() => {
         setOccupiedSlots([]);
+        setAvailableTimes([]);
         toast.error("Failed to check availability.");
       })
       .finally(() => setCheckingAvailability(false));
@@ -149,9 +154,10 @@ export function NewAppointmentForm() {
     return () => window.clearInterval(timer);
   }, [resendAt]);
 
-  const timeOptions = settings
-    ? generateTimeOptions(settings.opening_time, settings.closing_time, settings.slot_interval_minutes)
-    : [];
+  const timeOptions = availableTimes.map((time) => ({
+    value: formatTime12(time),
+    label: formatTime12(time),
+  }));
   const selectedServiceData = services.find((service) => String(service.id) === selectedService);
   const singleTotal = Number(selectedServiceData?.price ?? 0);
   const groupTotal = slotServices.reduce((total, serviceId) => {
@@ -160,6 +166,18 @@ export function NewAppointmentForm() {
   }, 0);
   const total = mode === "single" ? singleTotal : groupTotal;
   const barberName = barbers.find((barber) => String(barber.id) === selectedBarber)?.fullname ?? "—";
+  const serviceSummary = mode === "single"
+    ? selectedServiceData?.name ?? "—"
+    : Array.from(new Set(slotServices.map((serviceId) => services.find((service) => String(service.id) === serviceId)?.name).filter(Boolean))).join(", ") || "—";
+  const timeSummary = mode === "single"
+    ? selectedTime || "—"
+    : slotTimes.filter(Boolean).join(", ") || "—";
+  const pendingServiceSummary = pendingPayload
+    ? Array.from(new Set(pendingPayload.appointments.map((slot) => services.find((service) => service.id === slot.service_id)?.name).filter(Boolean))).join(", ") || "—"
+    : "—";
+  const pendingTimeSummary = pendingPayload
+    ? pendingPayload.appointments.map((slot) => formatTime12(slot.appointment_time)).join(", ") || "—"
+    : "—";
   const unavailableDates = useMemo(
     () => closedDates
       .filter((date) => date.closure_scope === "shop" || date.barber_user_id === Number(selectedBarber))
@@ -167,6 +185,20 @@ export function NewAppointmentForm() {
     [closedDates, selectedBarber],
   );
   const resendSeconds = Math.max(0, Math.ceil((resendAt - now) / 1_000));
+  const isDateDisabled = (day: Date): boolean => {
+    if (!settings || !selectedBarber) return false;
+    const isoWeekday = day.getDay() === 0 ? 7 : day.getDay();
+    const date = toApiDate(day);
+    const hasCustomSlot = settings.open_slots.some(
+      (slot) => slot.date === date && slot.barber_user_id === Number(selectedBarber),
+    );
+
+    return !hasCustomSlot && (
+      isoWeekday < settings.open_day_from
+      || isoWeekday > settings.open_day_to
+      || isoWeekday === settings.closed_weekday
+    );
+  };
 
   const scheduleValid = mode === "single"
     ? Boolean(selectedBarber && selectedService && selectedDate && selectedTime)
@@ -274,7 +306,7 @@ export function NewAppointmentForm() {
   return (
     <div className="w-full bg-transparent font-sans">
       <div className="relative rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
-        <div className="absolute right-4 top-4 z-10 flex items-center gap-1 rounded-lg bg-gray-100 p-1 sm:right-6 sm:top-6">
+        <div className="absolute top-4 right-4 z-10 flex w-fit items-center gap-0.5 rounded-md bg-gray-100 p-0.5 sm:top-6 sm:right-6 sm:gap-1 sm:rounded-lg sm:p-1">
           {(["single", "group"] as const).map((option) => (
             <button
               key={option}
@@ -282,7 +314,7 @@ export function NewAppointmentForm() {
               aria-pressed={mode === option}
               onClick={() => setMode(option)}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium capitalize transition sm:px-4",
+                "rounded px-2 py-1 text-xs font-medium capitalize transition sm:rounded-md sm:px-4 sm:py-1.5 sm:text-sm",
                 mode === option ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700",
               )}
             >
@@ -290,48 +322,50 @@ export function NewAppointmentForm() {
             </button>
           ))}
         </div>
+        <div className="mb-6">
+          <h1 className="pr-28 text-3xl font-bold text-gray-900 sm:pr-44 sm:text-4xl">Schedule Your Haircut</h1>
+          <p className="mt-2 text-gray-500">Choose your schedule, review the total, and verify your email to submit the request.</p>
+        </div>
         <form id="appointment-booking-form" onSubmit={handleSubmit} className="space-y-8">
           <section>
-            <div className="pr-36 sm:pr-44">
-              <h2 className="text-lg font-bold text-gray-900">Appointment Selection</h2>
-              <p className="mt-1 text-sm text-gray-500">Choose the barber, services, and schedule.</p>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {mode === "group" && settings && (
                 <div className="md:col-span-2">
                   <SelectWithLabel id="slot-count" label="How many total?" placeholder="Select number" options={Array.from({ length: settings.max_slots_per_booking - 1 }, (_, index) => ({ value: String(index + 2), label: String(index + 2) }))} value={String(slotCount)} onValueChange={(value) => setSlotCount(Number(value))} />
                 </div>
               )}
               <SelectWithLabel id="barber" label="Barber" placeholder="Select a barber" options={barbers.map((barber) => ({ value: String(barber.id), label: barber.fullname }))} value={selectedBarber} onValueChange={(value) => { setSelectedBarber(value); setSelectedDate(undefined); setSelectedTime(""); setSlotTimes([]); }} />
-              <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={MAX_BOOKING_DAYS_AHEAD} disableSundays date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} />
 
               {mode === "single" ? (
                 <>
                   <SelectWithLabel id="service" label="Service" placeholder="Select a service" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={selectedService} onValueChange={setSelectedService} />
+                  <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={settings?.booking_days_ahead} disableSundays={false} date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} isDateDisabled={isDateDisabled} />
                   <SelectWithLabel id="time" label="Time" placeholder="Select time" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, selectedService, services, occupiedSlots) || isPastTime(time.value, selectedDate) }))} value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
                 </>
               ) : (
-                <div className="space-y-3 md:col-span-2">
-                  <p className="text-sm font-medium text-gray-700">Per Person</p>
-                  {Array.from({ length: slotCount }, (_, index) => (
-                    <div key={index} className="grid grid-cols-1 items-end gap-3 rounded-lg bg-gray-50 p-3 sm:grid-cols-[3fr_1fr_1fr]">
-                      <InputWithLabel id={`slot-name-${index}`} label={index === 0 ? "Booking Contact" : `Person ${index + 1}`} value={index === 0 ? fullname : slotNames[index] ?? ""} onChange={(event) => {
-                        const value = event.target.value;
-                        if (index === 0) {
-                          setFullname(value);
-                        }
-                        setSlotNames((current) => {
-                          const next = [...current];
-                          next[index] = value;
-                          return next;
-                        });
-                      }} placeholder="Full name" maxLength={255} className="h-10 border-gray-200 bg-white text-gray-900" />
-                      <SelectWithLabel id={`slot-service-${index}`} label="Service" placeholder="Select" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={slotServices[index] ?? ""} onValueChange={(value) => setSlotServices((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate} />
-                      <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, slotServices[index], services, occupiedSlots) || isPastTime(time.value, selectedDate) }))} value={slotTimes[index] ?? ""} onValueChange={(value) => setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <DatePickerWithLabel id="date" label="Date" placeholder="Pick a date" disablePastDates maxDaysAhead={settings?.booking_days_ahead} disableSundays={false} date={selectedDate} onDateChange={setSelectedDate} disabled={!selectedBarber} closedDates={unavailableDates} isDateDisabled={isDateDisabled} />
+                  <div className="space-y-3 md:col-span-2">
+                    <p className="text-sm font-medium text-gray-700">Per Person</p>
+                    {Array.from({ length: slotCount }, (_, index) => (
+                      <div key={index} className="grid grid-cols-1 items-end gap-3 rounded-lg bg-gray-50 p-3 sm:grid-cols-[3fr_1fr_1fr]">
+                        <InputWithLabel id={`slot-name-${index}`} label={index === 0 ? "Booking Contact" : `Person ${index + 1}`} value={index === 0 ? fullname : slotNames[index] ?? ""} onChange={(event) => {
+                          const value = event.target.value;
+                          if (index === 0) {
+                            setFullname(value);
+                          }
+                          setSlotNames((current) => {
+                            const next = [...current];
+                            next[index] = value;
+                            return next;
+                          });
+                        }} placeholder="Full name" maxLength={255} className="h-10 border-gray-200 bg-white text-gray-900" />
+                        <SelectWithLabel id={`slot-service-${index}`} label="Service" placeholder="Select" options={services.map((service) => ({ value: String(service.id), label: service.name }))} value={slotServices[index] ?? ""} onValueChange={(value) => setSlotServices((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate} />
+                        <SelectWithLabel id={`slot-time-${index}`} label="Time" placeholder="Select" options={timeOptions.map((time) => ({ ...time, disabled: unavailableForService(time.value, slotServices[index], services, occupiedSlots) || isPastTime(time.value, selectedDate) }))} value={slotTimes[index] ?? ""} onValueChange={(value) => setSlotTimes((current) => { const next = [...current]; next[index] = value; return next; })} disabled={!selectedBarber || !selectedDate || checkingAvailability} />
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
               <div className="md:col-span-2">
@@ -341,7 +375,7 @@ export function NewAppointmentForm() {
           </section>
 
           <section className="border-t border-gray-200 pt-6">
-            <h2 className="text-lg font-bold text-gray-900">Booking Summary</h2>
+            <h2 className="text-lg font-bold text-gray-900">Service Summary</h2>
             <div className="mt-4 space-y-3">
               {mode === "single" && selectedServiceData && <SummaryRow name={selectedServiceData.name} description={selectedServiceData.description} price={singleTotal} />}
               {mode === "group" && Array.from({ length: slotCount }, (_, index) => {
@@ -353,7 +387,7 @@ export function NewAppointmentForm() {
           </section>
 
           <section className="border-t border-gray-200 pt-6">
-            <h2 className="text-lg font-bold text-gray-900">Personal Details</h2>
+            <h2 className="text-lg font-bold text-gray-900">Contact Details</h2>
             <p className="mt-1 text-sm text-gray-500">Status updates will be sent to this email address.</p>
             <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
               <InputWithLabel id="fullname" label="Full Name" value={fullname} onChange={(event) => setFullname(event.target.value)} maxLength={255} autoComplete="name" />
@@ -367,7 +401,7 @@ export function NewAppointmentForm() {
             </div>
           </section>
 
-          <button type="submit" disabled={!scheduleValid || loading} className="w-full rounded-xl bg-red-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50">Schedule Haircut</button>
+          <button type="submit" disabled={!scheduleValid || !termsAccepted || !privacyAcknowledged || loading} className="w-full rounded-xl bg-red-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50">Schedule Haircut</button>
         </form>
       </div>
 
@@ -375,7 +409,7 @@ export function NewAppointmentForm() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Confirm Your Booking Information</DialogTitle><DialogDescription>Review everything carefully. Booking updates will be sent to the email below.</DialogDescription></DialogHeader>
           <div className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
-            <Detail label="Name" value={fullname} /><Detail label="Email" value={email.toLowerCase()} /><Detail label="Contact" value={contactNumber} /><Detail label="Barber" value={barberName} /><Detail label="Date" value={selectedDate?.toLocaleDateString() ?? "—"} /><Detail label="Appointments" value={mode === "single" ? "1" : String(slotCount)} /><Detail label="Total" value={`₱${total.toFixed(2)}`} />
+            <Detail label="Name" value={fullname} /><Detail label="Email" value={email.toLowerCase()} /><Detail label="Contact" value={contactNumber} /><Detail label="Barber" value={barberName} /><Detail label="Service" value={serviceSummary} /><Detail label="Date" value={selectedDate?.toLocaleDateString() ?? "—"} /><Detail label="Time" value={timeSummary} /><Detail label="Bookings" value={mode === "single" ? "1" : String(slotCount)} /><Detail label="Total" value={`₱${total.toFixed(2)}`} />
           </div>
           <p className="text-sm font-medium text-amber-700">Make sure the email is correct. Confirmation, rejection, and all schedule updates will be sent there.</p>
           <DialogFooter><Button type="button" variant="outline" disabled={loading} onClick={() => setConfirmationOpen(false)}>Edit Details</Button><Button type="button" disabled={loading || !pendingPayload} onClick={() => pendingPayload && void sendOtp(pendingPayload)}>{loading ? "Sending..." : "Send Verification Code"}</Button></DialogFooter>
@@ -386,6 +420,17 @@ export function NewAppointmentForm() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Mail className="size-5 text-primary" />Verify Your Email</DialogTitle><DialogDescription>Enter the six-digit code sent to {email.toLowerCase()}. The slot will be checked again after verification.</DialogDescription></DialogHeader>
           <InputWithLabel id="booking-otp" label="Verification Code" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} className="text-center text-xl tracking-[0.4em]" />
+          <p className="text-center text-sm text-muted-foreground">
+            Having trouble with your code?{" "}
+            <a
+              href="https://www.facebook.com/profile.php?id=61550652631553"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
+            >
+              Contact TOL Barbershop on Facebook
+            </a>
+          </p>
           <DialogFooter className="gap-2 sm:justify-between"><Button type="button" variant="ghost" disabled={loading || resendSeconds > 0 || !pendingPayload} onClick={() => pendingPayload && void sendOtp(pendingPayload)}>{resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend Code"}</Button><Button type="button" disabled={loading || otp.length !== 6} onClick={() => void submitOtp()}>{loading ? "Verifying..." : "Verify and Submit"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -400,8 +445,10 @@ export function NewAppointmentForm() {
               <Detail label="Email" value={email.toLowerCase()} />
               <Detail label="Contact" value={contactNumber} />
               <Detail label="Barber" value={barberName} />
+              <Detail label="Service" value={pendingServiceSummary} />
               <Detail label="Date" value={formatBookingDate(pendingPayload?.appointment_date)} />
-              <Detail label="Appointments" value={String(pendingPayload?.appointments.length ?? 0)} />
+              <Detail label="Time" value={pendingTimeSummary} />
+              <Detail label="Bookings" value={String(pendingPayload?.appointments.length ?? 0)} />
             </div>
             <div className="border-t border-gray-200 pt-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Schedule Details</p>

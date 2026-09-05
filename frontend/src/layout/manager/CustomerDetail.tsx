@@ -271,7 +271,7 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
         />
       </div>
 
-      <SectionCard title="Appointment Breakdown" className="mb-4">
+      <SectionCard title="Booking Breakdown" className="mb-4">
         <div className="grid grid-cols-3 gap-4 mt-2">
           <div className="text-center p-3 bg-green-50 rounded-xl">
             <p className="text-2xl font-bold text-green-700">
@@ -322,7 +322,7 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 mt-3">No completed appointments yet.</p>
+            <p className="text-sm text-gray-400 mt-3">No completed bookings yet.</p>
           )}
         </SectionCard>
 
@@ -341,22 +341,22 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 mt-3">No completed appointments yet.</p>
+            <p className="text-sm text-gray-400 mt-3">No completed bookings yet.</p>
           )}
         </SectionCard>
       </div>
 
-      <SectionCard title="Last 3 Recent Appointments">
+      <SectionCard title="Last 3 Recent Bookings">
         {customer.recent_appointments.length > 0 ? (
           <>
             <div className="hidden md:block mt-3 overflow-x-auto">
               <Table>
                 <TableHeader className="bg-gray-50">
                   <TableRow>
+                    <TableHead>Barber</TableHead>
+                    <TableHead>Service</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Time</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Barber</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -364,17 +364,17 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
                 <TableBody>
                   {customer.recent_appointments.map((appt) => (
                     <TableRow key={appt.id}>
+                      <TableCell className="text-gray-600">
+                        {appt.barber_name}
+                      </TableCell>
+                      <TableCell className="text-gray-700">
+                        {appt.service_name}
+                      </TableCell>
                       <TableCell className="text-gray-700 whitespace-nowrap">
                         {appt.appointment_date}
                       </TableCell>
                       <TableCell className="text-gray-600 whitespace-nowrap">
                         {formatTime12(appt.appointment_time)}
-                      </TableCell>
-                      <TableCell className="text-gray-700">
-                        {appt.service_name}
-                      </TableCell>
-                      <TableCell className="text-gray-600">
-                        {appt.barber_name}
                       </TableCell>
                       <TableCell className="text-gray-700 font-medium">
                         {formatCurrency(appt.price)}
@@ -396,22 +396,26 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-900">
-                      {appt.appointment_date}
+                      Booking
                     </span>
                     <StatusBadge status={appt.status} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
                     <div>
-                      <span className="block text-gray-400">Time</span>
-                      {formatTime12(appt.appointment_time)}
+                      <span className="block text-gray-400">Barber</span>
+                      {appt.barber_name}
                     </div>
                     <div>
                       <span className="block text-gray-400">Service</span>
                       {appt.service_name}
                     </div>
                     <div>
-                      <span className="block text-gray-400">Barber</span>
-                      {appt.barber_name}
+                      <span className="block text-gray-400">Date</span>
+                      {appt.appointment_date}
+                    </div>
+                    <div>
+                      <span className="block text-gray-400">Time</span>
+                      {formatTime12(appt.appointment_time)}
                     </div>
                     <div>
                       <span className="block text-gray-400">Price</span>
@@ -423,7 +427,7 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
             </div>
           </>
         ) : (
-          <p className="text-sm text-gray-400 mt-3">No appointments yet.</p>
+          <p className="text-sm text-gray-400 mt-3">No bookings yet.</p>
         )}
       </SectionCard>
       <div className="h-10" />

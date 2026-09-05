@@ -3,7 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\SanitizesInput;
-use App\Services\AppointmentBookingService;
+use App\Services\BookingScheduleService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -59,7 +59,7 @@ class PublicBookingRequest extends FormRequest
                 'required',
                 'date_format:Y-m-d',
                 'after_or_equal:'.$today->toDateString(),
-                'before_or_equal:'.$today->copy()->addDays(AppointmentBookingService::MAX_BOOKING_DAYS_AHEAD)->toDateString(),
+                'before_or_equal:'.$today->copy()->addDays(app(BookingScheduleService::class)->bookingDaysAhead())->toDateString(),
             ],
             'notes' => ['nullable', 'string', 'max:500'],
             'appointments' => ['required', 'array', 'min:1', 'max:11'],
@@ -77,11 +77,11 @@ class PublicBookingRequest extends FormRequest
             $count = is_array($appointments) ? count($appointments) : 0;
 
             if ($mode === 'single' && $count !== 1) {
-                $validator->errors()->add('appointments', 'A single booking must contain exactly one appointment.');
+                $validator->errors()->add('appointments', 'A single booking must contain exactly one scheduled service.');
             }
 
             if ($mode === 'group' && ($count < 2 || $count > 11)) {
-                $validator->errors()->add('appointments', 'A group booking must contain between 2 and 11 appointments.');
+                $validator->errors()->add('appointments', 'A group booking must contain between 2 and 11 scheduled services.');
             }
 
             if ($mode === 'group' && is_array($appointments)) {
@@ -92,5 +92,14 @@ class PublicBookingRequest extends FormRequest
                 }
             }
         });
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'appointment_date' => 'booking date',
+            'appointments' => 'bookings',
+            'appointments.*.appointment_time' => 'booking time',
+        ];
     }
 }

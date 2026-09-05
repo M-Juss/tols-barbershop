@@ -8,7 +8,6 @@ use App\Models\Appointment;
 use App\Models\AppointmentAddOn;
 use App\Models\ServiceAddOn;
 use App\Support\EntityChange;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,53 +17,38 @@ class AppointmentAddOnController extends Controller
     {
         $validated = $request->validated();
 
-        try {
-            $appointment = DB::transaction(function () use ($appointmentId, $validated): Appointment {
-                $appointment = Appointment::whereKey($appointmentId)
-                    ->lockForUpdate()
-                    ->firstOrFail();
+        $appointment = DB::transaction(function () use ($appointmentId, $validated): Appointment {
+            $appointment = Appointment::whereKey($appointmentId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-                $this->assertConfirmed($appointment);
+            $this->assertConfirmed($appointment);
 
-                $addOn = ServiceAddOn::query()
-                    ->whereKey($validated['add_on_id'])
-                    ->where('is_active', true)
-                    ->lockForUpdate()
-                    ->first();
+            $addOn = ServiceAddOn::query()
+                ->whereKey($validated['add_on_id'])
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->first();
 
-                if (! $addOn) {
-                    throw ValidationException::withMessages([
-                        'add_on_id' => 'The selected add-on is not active.',
-                    ]);
-                }
-
-                if (AppointmentAddOn::query()
-                    ->where('appointment_id', $appointment->id)
-                    ->where('service_add_on_id', $addOn->id)
-                    ->exists()) {
-                    throw ValidationException::withMessages([
-                        'add_on_id' => 'This add-on is already applied to the appointment.',
-                    ]);
-                }
-
-                AppointmentAddOn::create([
-                    'appointment_id' => $appointment->id,
-                    'service_add_on_id' => $addOn->id,
-                    'name_snapshot' => $addOn->name,
-                    'price' => $addOn->price,
+            if (! $addOn) {
+                throw ValidationException::withMessages([
+                    'add_on_id' => 'The selected add-on is not active.',
                 ]);
+            }
 
-                $appointment->update([
-                    'price' => round((float) $appointment->price + (float) $addOn->price, 2),
-                ]);
-
-                return $appointment;
-            }, 3);
-        } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages([
-                'add_on_id' => 'This add-on is already applied to the appointment.',
+            AppointmentAddOn::create([
+                'appointment_id' => $appointment->id,
+                'service_add_on_id' => $addOn->id,
+                'name_snapshot' => $addOn->name,
+                'price' => $addOn->price,
             ]);
-        }
+
+            $appointment->update([
+                'price' => round((float) $appointment->price + (float) $addOn->price, 2),
+            ]);
+
+            return $appointment;
+        }, 3);
 
         $appointment->load([
             'bookingCustomer',
@@ -96,7 +80,7 @@ class AppointmentAddOnController extends Controller
 
             if (! $line) {
                 throw ValidationException::withMessages([
-                    'add_on_id' => 'The add-on is not applied to this appointment.',
+                    'add_on_id' => 'The add-on is not applied to this booking.',
                 ]);
             }
 
@@ -125,7 +109,7 @@ class AppointmentAddOnController extends Controller
     {
         if ($appointment->status !== 'confirmed') {
             throw ValidationException::withMessages([
-                'appointment' => 'Add-ons can only be changed on confirmed appointments.',
+                'appointment' => 'Add-ons can only be changed on confirmed bookings.',
             ]);
         }
     }

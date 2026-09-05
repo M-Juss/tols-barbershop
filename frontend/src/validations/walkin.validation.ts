@@ -14,10 +14,7 @@ const walkinDateSchema = z
       return date <= today;
     },
     { message: "Walk-in date cannot be in the future." },
-  )
-  .refine((value) => new Date(`${value}T00:00:00`).getDay() !== 0, {
-    message: "The barbershop is closed on Sundays.",
-  });
+  );
 
 export const walkinSchema = z.object({
   customer_name: z
@@ -33,8 +30,8 @@ export const walkinSchema = z.object({
     .string()
     .min(1, "Time is required.")
     .regex(
-      /^(09|1[0-1]):00$|^12:30$|^(1[3-9]):00$/,
-      "Appointment time must be on the hour from 09:00 through 19:00.",
+      /^(?:[01]\d|2[0-3]):[0-5]\d$/,
+      "Booking time must use the HH:mm format.",
     ),
   price: z
     .number()

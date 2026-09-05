@@ -16,6 +16,7 @@ class EntityChangeController extends Controller
             'appointments',
             'notifications',
             'closed_dates',
+            'booking_schedule',
             'barbers',
             'services',
             'gallery_images',

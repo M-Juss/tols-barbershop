@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Notifications\BookingMailNotification;
 use App\Services\AppointmentBookingService;
 use App\Services\BookingEmailService;
+use App\Services\BookingScheduleService;
 use App\Services\PushNotificationService;
 use App\Support\DisplayId;
 use App\Support\EntityChange;
@@ -37,12 +38,14 @@ class PublicBookingController extends Controller
     public function __construct(
         private readonly AppointmentBookingService $bookingService,
         private readonly BookingEmailService $emailService,
+        private readonly BookingScheduleService $scheduleService,
     ) {}
 
     public function bootstrap(): JsonResponse
     {
-        $latest = Carbon::today((string) config('app.shop_timezone', 'Asia/Manila'))
-            ->addDays(AppointmentBookingService::MAX_BOOKING_DAYS_AHEAD)
+        $schedule = $this->scheduleService->current();
+        $latest = $this->scheduleService->today()
+            ->addDays($schedule->booking_days_ahead)
             ->toDateString();
 
         return $this->success('Booking information retrieved.', [
@@ -60,10 +63,8 @@ class PublicBookingController extends Controller
                 ->whereBetween('date_closed', [now()->toDateString(), $latest])
                 ->get(['date_closed', 'closure_scope', 'barber_user_id']),
             'settings' => [
-                'opening_time' => '09:00',
-                'closing_time' => '19:00',
-                'slot_interval_minutes' => 60,
-                'max_slots_per_booking' => 11,
+                ...$this->scheduleService->settingsPayload($schedule),
+                'open_slots' => $this->scheduleService->publicOpenSlots($schedule)->all(),
             ],
         ]);
     }
@@ -83,22 +84,16 @@ class PublicBookingController extends Controller
                 'required',
                 'date_format:Y-m-d',
                 'after_or_equal:'.$today->toDateString(),
-                'before_or_equal:'.$today->copy()->addDays(AppointmentBookingService::MAX_BOOKING_DAYS_AHEAD)->toDateString(),
+                'before_or_equal:'.$today->copy()->addDays($this->scheduleService->bookingDaysAhead())->toDateString(),
             ],
         ]);
 
-        $hasClosure = ClosedDates::query()
-            ->where('date_closed', $validated['date'])
-            ->where('is_removed', false)
-            ->where(function ($query) use ($validated): void {
-                $query->where('closure_scope', 'shop')
-                    ->orWhere(fn ($barberQuery) => $barberQuery
-                        ->where('closure_scope', 'barber')
-                        ->where('barber_user_id', $validated['barber_id']));
-            })
-            ->exists();
+        $timeSlots = $this->scheduleService->startTimesFor(
+            $validated['date'],
+            (int) $validated['barber_id'],
+        );
 
-        if (Carbon::parse($validated['date'])->isSunday() || $hasClosure) {
+        if ($timeSlots === []) {
             throw ValidationException::withMessages(['date' => 'The selected date is not available for booking.']);
         }
 
@@ -113,7 +108,12 @@ class PublicBookingController extends Controller
             ])
             ->values();
 
-        return $this->success('Availability retrieved.', $slots);
+        return response()->json([
+            'success' => true,
+            'message' => 'Availability retrieved.',
+            'data' => $slots,
+            'time_slots' => $timeSlots,
+        ]);
     }
 
     public function requestOtp(PublicBookingRequest $request): JsonResponse
@@ -210,7 +210,7 @@ class PublicBookingController extends Controller
                     ->count();
                 if ($pendingCount + count($payload['appointments']) > AppointmentBookingService::MAX_PENDING_APPOINTMENTS_PER_CUSTOMER) {
                     throw ValidationException::withMessages([
-                        'appointments' => 'A customer may have at most 11 pending appointments.',
+                        'appointments' => 'A customer may have at most 11 pending bookings.',
                     ]);
                 }
 
@@ -303,7 +303,7 @@ class PublicBookingController extends Controller
             StaffNotification::create([
                 'user_id' => $user->id,
                 'type' => 'new_pending_appointment',
-                'title' => $count > 1 ? 'New Group Booking Request' : 'New Appointment Request',
+                'title' => $count > 1 ? 'New Group Booking Request' : 'New Booking Request',
                 'message' => "New pending booking {$reference} from {$first->bookingCustomer?->fullname}.",
                 'appointment_id' => $first->id,
                 'service_name' => $first->service?->name,
@@ -323,7 +323,7 @@ class PublicBookingController extends Controller
 
             try {
                 (new PushNotificationService)->send($user, [
-                    'title' => $count > 1 ? 'New Group Booking Request' : 'New Appointment Request',
+                    'title' => $count > 1 ? 'New Group Booking Request' : 'New Booking Request',
                     'body' => "New pending booking {$reference}.",
                     'icon' => '/Tol-Logo-White-Bg.png',
                     'badge' => '/Tol-Logo-White-Bg.png',

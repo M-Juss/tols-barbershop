@@ -23,12 +23,12 @@ import {
   getUnavailableSlots,
   getBookingSettings,
   type Appointment,
+  type BookingSettings,
   type OccupiedAppointmentSlot,
 } from "@/services/shared/appointment.api";
 import { sanitizeText } from "@/lib/sanitizer";
-import { generateTimeOptions, isTimeSlotUnavailable, formatTime12 } from "@/lib/time-slots";
+import { isTimeSlotUnavailable, formatTime12 } from "@/lib/time-slots";
 import { toast } from "sonner";
-import { MAX_BOOKING_DAYS_AHEAD } from "@/validations/appointment.validation";
 
 const rescheduleSchema = z.object({
   barber_user_id: z.string().min(1, "Please select a barber"),
@@ -118,6 +118,7 @@ export function RescheduleForm({
   const [occupiedSlots, setOccupiedSlots] = useState<OccupiedAppointmentSlot[]>([]);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [timeSlots, setTimeSlots] = useState<{ value: string; label: string }[]>([]);
+  const [settings, setSettings] = useState<BookingSettings | null>(null);
 
   const initialTime12 = convert24HourTo12Hour(appointment.appointment_time);
 
@@ -158,13 +159,7 @@ export function RescheduleForm({
             label: b.fullname,
           }));
         setBarbers(normalized);
-        setTimeSlots(
-          generateTimeOptions(
-            settings.opening_time,
-            settings.closing_time,
-            settings.slot_interval_minutes,
-          ),
-        );
+        setSettings(settings);
       } catch {
         toast.error("Failed to load booking data");
       } finally {
@@ -197,12 +192,16 @@ export function RescheduleForm({
           ? selectedDate.split("T")[0]
           : selectedDate;
         const targetBarberId = Number(selectedBarber);
-        const slots = await getUnavailableSlots(
+        const availability = await getUnavailableSlots(
           targetBarberId,
           targetDate,
           appointment.id,
         );
-        setOccupiedSlots(slots);
+        setOccupiedSlots(availability.occupied_slots);
+        setTimeSlots(availability.time_slots.map((time) => ({
+          value: formatTime12(time),
+          label: formatTime12(time),
+        })));
       } catch {
         toast.error("Failed to check availability");
         setOccupiedSlots([]);
@@ -252,22 +251,36 @@ export function RescheduleForm({
   const parsedSelectedDate = selectedDate
     ? new Date(selectedDate)
     : undefined;
+  const isDateDisabled = (day: Date): boolean => {
+    if (!settings || !selectedBarber) return false;
+    const isoWeekday = day.getDay() === 0 ? 7 : day.getDay();
+    const date = formatDateForApi(day);
+    const hasCustomSlot = settings.open_slots.some(
+      (slot) => slot.date === date && slot.barber_user_id === Number(selectedBarber),
+    );
+
+    return !hasCustomSlot && (
+      isoWeekday < settings.open_day_from
+      || isoWeekday > settings.open_day_to
+      || isoWeekday === settings.closed_weekday
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900">
-            Re-schedule Appointment
+            Reschedule Booking
           </DialogTitle>
           <DialogDescription className="text-gray-500 text-sm mt-0.5">
-            Update the schedule details for this appointment
+            Update the schedule details for this booking
           </DialogDescription>
         </DialogHeader>
 
         <div className="bg-gray-50 rounded-lg p-4 space-y-3 mb-4">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-gray-500">Appointment ID:</span>
+            <span className="text-xs font-semibold text-gray-500">Booking ID:</span>
             <span className="text-xs font-bold text-gray-900">
               {formatBookingId(appointment.id)}
             </span>
@@ -281,26 +294,26 @@ export function RescheduleForm({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <div className="flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-gray-600">
+                <span className="font-medium text-gray-800">Current Barber:</span>{" "}
+                {appointment.barber.fullname}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
               <Scissors className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-gray-600">
                 <span className="font-medium text-gray-800">Service:</span>{" "}
                 {appointment.service.name}
               </span>
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <div className="flex items-center gap-1.5">
               <CalendarDays className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-gray-600">
                 <span className="font-medium text-gray-800">Current Date:</span>{" "}
                 {formatShortDate(appointment.appointment_date)}
-              </span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-gray-600">
-                <span className="font-medium text-gray-800">Current Barber:</span>{" "}
-                {appointment.barber.fullname}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -350,8 +363,9 @@ export function RescheduleForm({
                 label="New Date"
                 placeholder="Pick a date"
                 disablePastDates={true}
-                maxDaysAhead={MAX_BOOKING_DAYS_AHEAD}
-                disableSundays={true}
+                maxDaysAhead={settings?.booking_days_ahead}
+                disableSundays={false}
+                isDateDisabled={isDateDisabled}
                 date={parsedSelectedDate}
                 onDateChange={(date) => {
                   if (date) {
@@ -403,7 +417,7 @@ export function RescheduleForm({
             <TextAreaWithLabel
               id="reason"
               label="Reason for Rescheduling"
-              placeholder="Explain why this appointment is being rescheduled..."
+              placeholder="Explain why this booking is being rescheduled..."
               rows={3}
               maxLength={500}
               className="border-gray-300 focus:border-gray-400"
@@ -430,7 +444,7 @@ export function RescheduleForm({
               disabled={isSubmitting}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {isSubmitting ? "Rescheduling..." : "Re-schedule Appointment"}
+              {isSubmitting ? "Rescheduling..." : "Reschedule Booking"}
             </Button>
           </DialogFooter>
         </form>

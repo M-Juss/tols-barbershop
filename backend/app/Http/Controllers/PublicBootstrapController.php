@@ -30,8 +30,8 @@ class PublicBootstrapController extends Controller
                 ->where('rating', 5)
                 ->whereNotNull('comment')
                 ->where('comment', '<>', '')
-                ->latest()
-                ->limit(10)
+                ->inRandomOrder()
+                ->limit(1)
                 ->get()
             : collect();
 

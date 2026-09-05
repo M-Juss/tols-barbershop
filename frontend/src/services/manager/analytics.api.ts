@@ -34,7 +34,7 @@ export const DATE_PRESETS: ReportDatePreset[] = [
 export const SECTIONS: { key: ReportSection; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "revenue", label: "Revenue" },
-  { key: "appointments", label: "Appointments" },
+  { key: "appointments", label: "Bookings" },
   { key: "services", label: "Services" },
   { key: "barbers", label: "Barbers" },
   { key: "customers", label: "Feedbacks" },

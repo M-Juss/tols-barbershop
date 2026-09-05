@@ -155,11 +155,11 @@ export function Historical() {
         <div className="block md:hidden space-y-3">
           {loading ? (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 text-center text-gray-400 text-sm">
-              Loading appointments...
+              Loading bookings...
             </div>
           ) : rows.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 text-center text-gray-400 text-sm">
-              No appointments found.
+              No bookings found.
             </div>
           ) : (
             rows.map((row) => (
@@ -175,7 +175,7 @@ export function Historical() {
                 </div>
                 <p className="text-sm text-gray-900 font-medium">{row.customer}</p>
                 <p className="text-xs text-gray-500">
-                  {row.service} · {row.barber}
+                  {row.barber} · {row.service}
                 </p>
                 {row.addOns.length > 0 ? (
                   <p className="text-xs text-red-600">
@@ -224,26 +224,25 @@ export function Historical() {
               <TableRow>
                 <TableHead>Reference</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Service</TableHead>
                 <TableHead>Barber</TableHead>
+                <TableHead>Service</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Email</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell className="text-gray-500" colSpan={9}>
+                  <TableCell className="text-gray-500" colSpan={8}>
                     Loading appointments...
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="text-gray-500" colSpan={9}>
-                    No appointments found.
+                  <TableCell className="text-gray-500" colSpan={8}>
+                    No bookings found.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -251,6 +250,7 @@ export function Historical() {
                   <TableRow key={row.id} className="group relative">
                     <TableCell>{formatBookingId(row.id)}</TableCell>
                     <TableCell>{row.customer}</TableCell>
+                    <TableCell>{row.barber}</TableCell>
                     <TableCell>
                       <div>{row.service}</div>
                       {row.addOns.length > 0 ? (
@@ -259,31 +259,27 @@ export function Historical() {
                         </div>
                       ) : null}
                     </TableCell>
-                    <TableCell>{row.barber}</TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>{row.time}</TableCell>
                     <TableCell>₱{row.price.toFixed(2)}</TableCell>
                     <TableCell>
                       <div className="relative inline-block">
                         <AppointmentStatusBadge status={row.status} />
-                        {row.cancellation_reason ? (
-                          <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-max max-w-64 -translate-x-1/2 rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-xs text-red-600 shadow-md group-hover:block">
-                            Reason: {row.cancellation_reason}
-                          </div>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {row.emailDelivery ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs capitalize text-gray-500">
-                            {row.emailDelivery.type.replaceAll("_", " ")} · {row.emailDelivery.status}
-                          </span>
-                          {row.emailDelivery.status === "failed" ? (
+                        <div className="pointer-events-auto absolute left-1/2 top-full z-20 mt-2 hidden w-max max-w-72 -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-600 shadow-md group-hover:block">
+                          <p className="capitalize">
+                            Email: {row.emailDelivery?.status ?? "Not sent"}
+                          </p>
+                          {row.cancellation_reason ? (
+                            <p className="mt-1 text-red-600">
+                              Reason: {row.cancellation_reason}
+                            </p>
+                          ) : null}
+                          {row.emailDelivery?.status === "failed" ? (
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
+                              className="mt-2 h-7 px-2 text-xs"
                               disabled={resendingDeliveryId === row.emailDelivery.id}
                               onClick={() => void resendEmail(row.emailDelivery!.id)}
                             >
@@ -291,9 +287,7 @@ export function Historical() {
                             </Button>
                           ) : null}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">Not sent</span>
-                      )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

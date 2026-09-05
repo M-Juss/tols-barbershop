@@ -249,7 +249,7 @@ export function Service() {
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Add-ons</h2>
                 <p className="text-sm text-gray-500">
-                  Optional extras staff can apply to confirmed appointments.
+                  Optional extras staff can apply to confirmed bookings.
                 </p>
               </div>
               <button
@@ -331,7 +331,7 @@ export function Service() {
               Archive Service
             </DialogTitle>
             <DialogDescription>
-              Archive this service? Existing appointment and reporting history
+              Archive this service? Existing booking and reporting history
               will be retained, and customers can no longer book it.
             </DialogDescription>
           </DialogHeader>
@@ -369,7 +369,7 @@ export function Service() {
               Archive Add-on
             </DialogTitle>
             <DialogDescription>
-              Archive this add-on? Existing appointment totals and history will be retained.
+              Archive this add-on? Existing booking totals and history will be retained.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

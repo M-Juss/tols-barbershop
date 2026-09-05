@@ -165,15 +165,31 @@ export interface CreateBatchAppointmentData {
 }
 
 export interface BookingSettings {
+  open_day_from: number;
+  open_day_to: number;
+  closed_weekday: number | null;
   opening_time: string;
   closing_time: string;
+  custom_open_time: string;
+  booking_days_ahead: number;
   slot_interval_minutes: number;
   max_slots_per_booking: number;
+  effective_from: string;
+  open_slots: Array<{
+    date: string;
+    time: string;
+    barber_user_id: number;
+  }>;
 }
 
 export type OccupiedAppointmentSlot = {
   appointment_time: string;
   duration_minutes: number;
+};
+
+export type AppointmentAvailability = {
+  occupied_slots: OccupiedAppointmentSlot[];
+  time_slots: string[];
 };
 
 export const getActiveBarbers = async (): Promise<Barber[]> => {
@@ -377,7 +393,7 @@ export const getUnavailableSlots = async (
   barberId: number,
   date: string,
   ignoreAppointmentId?: number,
-): Promise<OccupiedAppointmentSlot[]> => {
+): Promise<AppointmentAvailability> => {
   const params = new URLSearchParams({
     barber_id: barberId.toString(),
     date,
@@ -389,16 +405,17 @@ export const getUnavailableSlots = async (
   const response = await authFetch(
     `${process.env.NEXT_PUBLIC_API_URL}/appointments/available-slots?${params.toString()}`,
   );
-  return response.data;
+  return {
+    occupied_slots: response.data,
+    time_slots: response.time_slots,
+  };
 };
 
 export const getBookingSettings = async (): Promise<BookingSettings> => {
-  return getCachedRequest("settings:booking", async () => {
-    const response = await publicFetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/public-booking-settings`,
-      { cache: "force-cache" },
-    );
+  const response = await publicFetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/public-booking-settings`,
+    { cache: "no-store" },
+  );
 
-    return response.data;
-  }, REFERENCE_DATA_STALE_MS);
+  return response.data;
 };

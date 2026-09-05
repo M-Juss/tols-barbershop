@@ -154,7 +154,7 @@ class AppointmentFeedbackController extends Controller
         return $this->success('Feedback retrieved successfully.', [
             'feedback' => AppointmentFeedbackResource::collection($feedback),
         ])->withHeaders([
-            'Cache-Control' => 'public, max-age=300, s-maxage=300, stale-while-revalidate=600',
+            'Cache-Control' => 'no-store, max-age=0',
         ]);
     }
 
@@ -169,7 +169,7 @@ class AppointmentFeedbackController extends Controller
         return $this->success('Featured feedback retrieved successfully.', [
             'feedback' => AppointmentFeedbackResource::collection($feedback),
         ])->withHeaders([
-            'Cache-Control' => 'public, max-age=300, s-maxage=300, stale-while-revalidate=600',
+            'Cache-Control' => 'no-store, max-age=0',
         ]);
     }
 

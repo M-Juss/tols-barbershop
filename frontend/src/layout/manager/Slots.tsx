@@ -10,11 +10,15 @@ import {
   Calendar,
   X,
   AlertTriangle,
+  Settings,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityLog } from "@/components/common/ActivityLog";
+import { DatePickerWithLabel } from "@/components/common/DatePickerWithLabel";
 import { ClosedDateForm } from "@/forms/ClosedDateForm";
 import { ClosedDateSchemaFormValues } from "@/validations/closed.date.validation";
+import { SelectWithLabel } from "@/components/common/SelectWithLabel";
 import {
   getClosedDates,
   createClosedDate,
@@ -25,6 +29,8 @@ import {
 } from "@/services/manager/close.date.api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +39,68 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getBarbers, type Barber } from "@/services/manager/barber.api";
+import {
+  createScheduleOpenSlots,
+  deleteScheduleOpenSlot,
+  getBookingSchedule,
+  getScheduleOpenSlots,
+  updateBookingSchedule,
+  type BookingSchedule,
+  type ScheduleOpenSlot,
+  type UpdateBookingScheduleData,
+} from "@/services/manager/booking-schedule.api";
+import {
+  bookingScheduleSchema,
+  scheduleOpenSlotSchema,
+} from "@/validations/booking-schedule.validation";
+
+const DAYS = [
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+  { value: 7, label: "Sunday" },
+];
+
+const HOURS = Array.from({ length: 24 }, (_, hour) => ({
+  value: `${String(hour).padStart(2, "0")}:00`,
+  label: new Date(`1970-01-01T${String(hour).padStart(2, "0")}:00:00`).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }),
+}));
+
+const TWELVE_HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
+
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, minute) => ({
+  value: String(minute),
+  label: String(minute).padStart(2, "0"),
+}));
+
+const BOOKING_WINDOW_OPTIONS = Array.from({ length: 30 }, (_, index) => {
+  const days = index + 1;
+
+  return {
+    value: String(days),
+    label: `${days} ${days === 1 ? "day" : "days"}`,
+  };
+});
+
+const defaultSchedule: UpdateBookingScheduleData = {
+  open_day_from: 1,
+  open_day_to: 7,
+  closed_weekday: 7,
+  opening_time: "09:00",
+  closing_time: "19:00",
+  custom_open_time: "12:30",
+  booking_days_ahead: 7,
+};
 
 const formatDateToLocal = (date: Date): string => {
   return (
@@ -43,6 +111,48 @@ const formatDateToLocal = (date: Date): string => {
     String(date.getDate()).padStart(2, "0")
   );
 };
+
+type TimeSelection = {
+  hour: number;
+  minute: number;
+  period: "AM" | "PM";
+};
+
+function toTimeSelection(value: string): TimeSelection {
+  const [hour = "12", minute = "30"] = value.slice(0, 5).split(":");
+  const hour24 = Number(hour);
+
+  return {
+    hour: hour24 % 12 || 12,
+    minute: Number(minute),
+    period: hour24 >= 12 ? "PM" : "AM",
+  };
+}
+
+function toTwentyFourHourTime({ hour, minute, period }: TimeSelection): string {
+  const hour24 = hour % 12 + (period === "PM" ? 12 : 0);
+
+  return `${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function clampTime(value: string, openingTime: string, closingTime: string): string {
+  return value < openingTime ? openingTime : value > closingTime ? closingTime : value;
+}
+
+function withCustomOpenTime(
+  schedule: UpdateBookingScheduleData,
+  changes: Partial<TimeSelection>,
+): UpdateBookingScheduleData {
+  const customOpenTime = toTwentyFourHourTime({
+    ...toTimeSelection(schedule.custom_open_time),
+    ...changes,
+  });
+
+  return {
+    ...schedule,
+    custom_open_time: clampTime(customOpenTime, schedule.opening_time, schedule.closing_time),
+  };
+}
 
 export function Slots() {
   const [showClosedDateModal, setShowClosedDateModal] = useState(false);
@@ -64,37 +174,81 @@ export function Slots() {
   const [closedDateToReopen, setClosedDateToReopen] =
     useState<ClosedDate | null>(null);
   const [isReopening, setIsReopening] = useState(false);
+  const [schedule, setSchedule] = useState<BookingSchedule | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<UpdateBookingScheduleData>(defaultSchedule);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [openSlots, setOpenSlots] = useState<ScheduleOpenSlot[]>([]);
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [showOpenSlotModal, setShowOpenSlotModal] = useState(false);
+  const [openSlotDate, setOpenSlotDate] = useState<Date | undefined>();
+  const [openSlotBarbers, setOpenSlotBarbers] = useState<number[]>([]);
+  const [openSlotHour, setOpenSlotHour] = useState(12);
+  const [openSlotMinute, setOpenSlotMinute] = useState(0);
+  const [openSlotPeriod, setOpenSlotPeriod] = useState<"AM" | "PM">("PM");
+  const [isSavingOpenSlot, setIsSavingOpenSlot] = useState(false);
+  const customTime = toTimeSelection(scheduleDraft.custom_open_time);
 
   const scheduleInfo = [
     {
       icon: CalendarDays,
       label: "Working Days",
-      value: "Monday – Saturday",
+      value: schedule
+        ? `${DAYS[schedule.open_day_from - 1]?.label} – ${DAYS[schedule.open_day_to - 1]?.label}`
+        : "Loading...",
       accent: "bg-blue-50 text-blue-600",
       iconBg: "bg-blue-100",
     },
     {
       icon: Clock,
       label: "Working Hours",
-      value: "9:00 AM – 7:00 PM",
+      value: schedule
+        ? `${formatScheduleTime(schedule.opening_time)} – ${formatScheduleTime(schedule.closing_time)}`
+        : "Loading...",
       accent: "bg-emerald-50 text-emerald-600",
       iconBg: "bg-emerald-100",
     },
     {
       icon: Timer,
-      label: "Appointment Duration",
+      label: "Booking Duration",
       value: "1 Hour",
       accent: "bg-violet-50 text-violet-600",
       iconBg: "bg-violet-100",
     },
     {
+      icon: Clock,
+      label: "Custom Time",
+      value: schedule ? formatScheduleTime(schedule.custom_open_time) : "Loading...",
+      accent: "bg-amber-50 text-amber-600",
+      iconBg: "bg-amber-100",
+    },
+    {
       icon: Ban,
-      label: "Sunday",
-      value: "Closed",
+      label: "Recurring Closed Day",
+      value: schedule?.closed_weekday
+        ? DAYS[schedule.closed_weekday - 1]?.label
+        : "None",
       accent: "bg-red-50 text-red-500",
       iconBg: "bg-red-100",
     },
   ];
+
+  const fetchScheduleData = useCallback(async () => {
+    try {
+      const [scheduleData, openSlotData, barberData] = await Promise.all([
+        getBookingSchedule(),
+        getScheduleOpenSlots(),
+        getBarbers(),
+      ]);
+      setSchedule(scheduleData);
+      setScheduleDraft(toScheduleDraft(scheduleData));
+      setOpenSlots(openSlotData);
+      setBarbers(barberData.filter((barber) => barber.is_active !== false));
+    } catch (error) {
+      console.error("Error fetching schedule configuration:", error);
+      toast.error("Could not load schedule configuration.");
+    }
+  }, []);
 
   const fetchClosedDates = useCallback(async (page: number = 1) => {
     try {
@@ -169,8 +323,9 @@ export function Slots() {
     await Promise.all([
       fetchClosedDates(page),
       fetchActivityLogs(activityCurrentPage),
+      fetchScheduleData(),
     ]);
-  }, [activityCurrentPage, fetchActivityLogs, fetchClosedDates]);
+  }, [activityCurrentPage, fetchActivityLogs, fetchClosedDates, fetchScheduleData]);
 
   useEffect(() => {
     fetchAllData();
@@ -236,22 +391,128 @@ export function Slots() {
     }
   };
 
+  const handleScheduleSave = async () => {
+    const validation = bookingScheduleSchema.safeParse(scheduleDraft);
+    if (!validation.success) {
+      toast.error(validation.error.issues[0]?.message ?? "Check the schedule configuration.");
+      return;
+    }
+
+    setIsSavingSchedule(true);
+    try {
+      const updated = await updateBookingSchedule(validation.data);
+      setSchedule(updated);
+      setScheduleDraft(toScheduleDraft(updated));
+      setShowScheduleModal(false);
+      toast.success("Schedule configuration updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update schedule configuration.");
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const handleOpenSlotSave = async () => {
+    const slotDate = openSlotDate ? formatDateToLocal(openSlotDate) : "";
+    const candidate = {
+      slot_date: slotDate,
+      barber_user_ids: openSlotBarbers,
+      hour: openSlotHour,
+      minute: openSlotMinute,
+      period: openSlotPeriod,
+    };
+    const validation = scheduleOpenSlotSchema.safeParse(candidate);
+    if (!validation.success) {
+      toast.error("Select a date and at least one barber.");
+      return;
+    }
+
+    const hour24 = openSlotHour % 12 + (openSlotPeriod === "PM" ? 12 : 0);
+    const scheduledAt = new Date(
+      `${slotDate}T${String(hour24).padStart(2, "0")}:${String(openSlotMinute).padStart(2, "0")}:00+08:00`,
+    );
+    if (scheduledAt.getTime() <= Date.now()) {
+      toast.error("This time has already passed.");
+      return;
+    }
+
+    setIsSavingOpenSlot(true);
+    try {
+      await createScheduleOpenSlots(validation.data);
+      setOpenSlots(await getScheduleOpenSlots());
+      setShowOpenSlotModal(false);
+      setOpenSlotDate(undefined);
+      setOpenSlotBarbers([]);
+      toast.success("Open slot added.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add open slot.");
+    } finally {
+      setIsSavingOpenSlot(false);
+    }
+  };
+
+  const handleDeleteOpenSlot = async (id: number) => {
+    try {
+      await deleteScheduleOpenSlot(id);
+      setOpenSlots((current) => current.filter((slot) => slot.id !== id));
+      toast.success("Open slot removed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove open slot.");
+    }
+  };
+
   return (
     <div className="w-full h-full p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col">
-          <div className="relative mb-4">
-            <p className="font-semibold">Closed Dates</p>
-            <p className="text-gray-700 text-sm">Mark days when the shop is closed</p>
-            <button
-              onClick={openClosedDateModal}
-              className="absolute top-0 right-0 flex items-center gap-1.5 bg-red-500 hover:bg-red-600 transition-colors text-white font-semibold rounded-lg px-3 py-1.5 text-xs whitespace-nowrap"
-            >
-              <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-              <span className="hidden xs:inline">Add Closed Date</span>
-              <span className="xs:hidden">Add</span>
-            </button>
+        <div className="order-2 bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col lg:order-1">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">Schedule Exceptions</p>
+              <p className="text-gray-700 text-sm">Close a date or add a custom open slot</p>
+            </div>
+            <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">
+              <button
+                onClick={() => setShowOpenSlotModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                Open Slot
+              </button>
+              <button
+                onClick={openClosedDateModal}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                Close Date
+              </button>
+            </div>
           </div>
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Custom Open Slots</p>
+            <div className="space-y-2">
+              {openSlots.length === 0 ? (
+                <p className="text-sm text-gray-500">No custom open slots found</p>
+              ) : openSlots.slice(0, 8).map((slot) => (
+                <div key={slot.id} className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      {formatDisplayDate(slot.slot_date)} at {formatScheduleTime(slot.slot_time)}
+                    </p>
+                    <p className="truncate text-xs text-gray-500">{slot.barber_name}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteOpenSlot(slot.id)}
+                    className="rounded p-1 text-emerald-700 hover:bg-emerald-100"
+                    aria-label={`Remove open slot for ${slot.barber_name}`}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Closed Dates</p>
           <div className="space-y-2">
             {loading ? (
               <p className="text-gray-500 text-sm">Loading...</p>
@@ -318,14 +579,21 @@ export function Slots() {
               </button>
             </div>
           )}
+
         </div>
 
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col">
-          <div className="mb-5">
-            <p className="font-semibold text-gray-900">Schedule Overview</p>
-            <p className="text-gray-500 text-sm mt-0.5">
-              Current operating schedule for appointments
-            </p>
+        <div className="order-1 bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col lg:order-2">
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-gray-900">Operation Configuration</p>
+              <p className="text-gray-500 text-sm mt-0.5">
+                Current operating schedule for bookings
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowScheduleModal(true)}>
+              <Settings className="size-4" />
+              Configure
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-3 flex-1">
@@ -367,7 +635,7 @@ export function Slots() {
       <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col justify-between">
         <p className="font-semibold">Activity Log</p>
         <p className="text-gray-700 mb-6">
-          Recent changes to appointment slots
+          Recent changes to booking slots
         </p>
         <div className="space-y-3 overflow-y-auto">
           {activityLoading ? (
@@ -416,6 +684,225 @@ export function Slots() {
         onSubmit={handleClosedDateSubmit}
       />
 
+      <Dialog open={showScheduleModal} onOpenChange={(open) => !isSavingSchedule && setShowScheduleModal(open)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Schedule Configuration</DialogTitle>
+            <DialogDescription>
+              These settings apply to the whole operation from today forward.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectWithLabel
+              id="open-day-from"
+              label="Open Days From"
+              value={String(scheduleDraft.open_day_from)}
+              options={DAYS.map((day) => ({ value: String(day.value), label: day.label }))}
+              onValueChange={(value) => {
+                const from = Number(value);
+                setScheduleDraft((current) => ({
+                  ...current,
+                  open_day_from: from,
+                  open_day_to: Math.max(current.open_day_to, from),
+                  closed_weekday: current.closed_weekday !== null && current.closed_weekday >= from
+                    ? current.closed_weekday
+                    : null,
+                }));
+              }}
+            />
+            <SelectWithLabel
+              id="open-day-to"
+              label="To"
+              value={String(scheduleDraft.open_day_to)}
+              options={DAYS.map((day) => ({
+                value: String(day.value),
+                label: day.label,
+                disabled: day.value < scheduleDraft.open_day_from,
+              }))}
+              onValueChange={(value) => {
+                const to = Number(value);
+                setScheduleDraft((current) => ({
+                  ...current,
+                  open_day_to: to,
+                  closed_weekday: current.closed_weekday !== null && current.closed_weekday <= to
+                    ? current.closed_weekday
+                    : null,
+                }));
+              }}
+            />
+            <SelectWithLabel
+              id="closed-weekday"
+              label="Recurring Closed Day"
+              value={scheduleDraft.closed_weekday === null ? "none" : String(scheduleDraft.closed_weekday)}
+              options={[
+                { value: "none", label: "None" },
+                ...DAYS.map((day) => ({
+                  value: String(day.value),
+                  label: day.label,
+                  disabled: day.value < scheduleDraft.open_day_from || day.value > scheduleDraft.open_day_to,
+                })),
+              ]}
+              onValueChange={(value) => setScheduleDraft((current) => ({
+                ...current,
+                closed_weekday: value === "none" ? null : Number(value),
+              }))}
+            />
+            <SelectWithLabel
+              id="booking-days-ahead"
+              label="Customer Booking Window"
+              value={String(scheduleDraft.booking_days_ahead)}
+              options={BOOKING_WINDOW_OPTIONS}
+              onValueChange={(value) => setScheduleDraft((current) => ({
+                ...current,
+                booking_days_ahead: Number(value),
+              }))}
+            />
+            <SelectWithLabel
+              id="opening-time"
+              label="Working Hours From"
+              value={scheduleDraft.opening_time}
+              options={HOURS}
+              onValueChange={(value) => setScheduleDraft((current) => ({
+                ...current,
+                opening_time: value,
+                closing_time: current.closing_time < value ? value : current.closing_time,
+                custom_open_time: clampTime(
+                  current.custom_open_time,
+                  value,
+                  current.closing_time < value ? value : current.closing_time,
+                ),
+              }))}
+            />
+            <SelectWithLabel
+              id="closing-time"
+              label="To"
+              value={scheduleDraft.closing_time}
+              options={HOURS.map((hour) => ({
+                ...hour,
+                disabled: hour.value < scheduleDraft.opening_time,
+              }))}
+              onValueChange={(value) => setScheduleDraft((current) => ({
+                ...current,
+                closing_time: value,
+                custom_open_time: clampTime(current.custom_open_time, current.opening_time, value),
+              }))}
+            />
+            <div className="space-y-3 sm:col-span-2">
+              <div>
+                <Label>Recurring Custom Time</Label>
+                <p className="mt-1 text-xs text-gray-500">
+                  Available for every barber on each open date from today forward.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <SelectWithLabel
+                  id="custom-open-hour"
+                  label="Hour"
+                  value={String(customTime.hour)}
+                  options={TWELVE_HOUR_OPTIONS}
+                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
+                    hour: Number(value),
+                  }))}
+                />
+                <SelectWithLabel
+                  id="custom-open-minute"
+                  label="Minute"
+                  value={String(customTime.minute)}
+                  options={MINUTE_OPTIONS}
+                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
+                    minute: Number(value),
+                  }))}
+                />
+                <SelectWithLabel
+                  id="custom-open-period"
+                  label="AM / PM"
+                  value={customTime.period}
+                  options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
+                  onValueChange={(value) => setScheduleDraft((current) => withCustomOpenTime(current, {
+                    period: value as "AM" | "PM",
+                  }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowScheduleModal(false)} disabled={isSavingSchedule}>Cancel</Button>
+            <Button type="button" onClick={() => void handleScheduleSave()} disabled={isSavingSchedule}>
+              {isSavingSchedule ? "Saving..." : "Save Configuration"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showOpenSlotModal} onOpenChange={(open) => !isSavingOpenSlot && setShowOpenSlotModal(open)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Open Slot</DialogTitle>
+            <DialogDescription>
+              Add one custom time for every selected barber on this date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <DatePickerWithLabel
+                id="open-slot-date"
+                label="Date"
+                placeholder="Select date"
+                date={openSlotDate}
+                disablePastDates
+                disableSundays={false}
+                onDateChange={setOpenSlotDate}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Barbers</Label>
+              <div className="grid max-h-44 gap-2 overflow-y-auto rounded-md border border-gray-200 p-3 sm:grid-cols-2">
+                {barbers.map((barber) => (
+                  <label key={barber.id} className="flex items-center gap-2 text-sm text-gray-700">
+                    <Checkbox
+                      checked={openSlotBarbers.includes(barber.id)}
+                      onCheckedChange={(checked) => setOpenSlotBarbers((current) => checked
+                        ? [...current, barber.id]
+                        : current.filter((id) => id !== barber.id))}
+                    />
+                    <span>{barber.fullname}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <SelectWithLabel
+                id="open-slot-hour"
+                label="Hour"
+                value={String(openSlotHour)}
+                options={Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))}
+                onValueChange={(value) => setOpenSlotHour(Number(value))}
+              />
+              <SelectWithLabel
+                id="open-slot-minute"
+                label="Minute"
+                value={String(openSlotMinute)}
+                options={Array.from({ length: 60 }, (_, minute) => ({ value: String(minute), label: String(minute).padStart(2, "0") }))}
+                onValueChange={(value) => setOpenSlotMinute(Number(value))}
+              />
+              <SelectWithLabel
+                id="open-slot-period"
+                label="AM / PM"
+                value={openSlotPeriod}
+                options={[{ value: "AM", label: "AM" }, { value: "PM", label: "PM" }]}
+                onValueChange={(value) => setOpenSlotPeriod(value as "AM" | "PM")}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowOpenSlotModal(false)} disabled={isSavingOpenSlot}>Cancel</Button>
+            <Button type="button" onClick={() => void handleOpenSlotSave()} disabled={isSavingOpenSlot}>
+              {isSavingOpenSlot ? "Adding..." : "Add Open Slot"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={closedDateToReopen !== null}
         onOpenChange={(open) => {
@@ -454,4 +941,31 @@ export function Slots() {
       </Dialog>
     </div>
   );
+}
+
+function formatScheduleTime(value: string): string {
+  return new Date(`1970-01-01T${value.slice(0, 5)}:00`).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatDisplayDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function toScheduleDraft(schedule: BookingSchedule): UpdateBookingScheduleData {
+  return {
+    open_day_from: schedule.open_day_from,
+    open_day_to: schedule.open_day_to,
+    closed_weekday: schedule.closed_weekday,
+    opening_time: schedule.opening_time,
+    closing_time: schedule.closing_time,
+    custom_open_time: schedule.custom_open_time,
+    booking_days_ahead: schedule.booking_days_ahead,
+  };
 }

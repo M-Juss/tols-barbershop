@@ -12,15 +12,19 @@ import {
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   Mail,
+  MoreVertical,
   Phone,
   Star,
   StickyNote,
   User,
+  UserX,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -31,6 +35,7 @@ import {
 } from "react";
 
 import { AppointmentStatusBadge } from "@/components/common/AppointmentStatusBadge";
+import { CancellationForm } from "@/forms/CancellationForm";
 import { StatCard } from "@/components/common/StatCard";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -52,8 +57,18 @@ import { formatTime12 } from "@/lib/time-slots";
 import { cn } from "@/lib/utils";
 import { getClosedDates } from "@/services/manager/close.date.api";
 import { getWeeklySchedule } from "@/services/manager/overview.api";
+import {
+  getAppointments,
+  updateAppointment,
+  updateBatchAppointmentStatus,
+  type Appointment,
+} from "@/services/shared/appointment.api";
+import { updateAppointmentSchema } from "@/validations/appointment.validation";
+import type { CancellationReasonSchemaFormValues } from "@/validations/appointment.validation";
+import { toast } from "sonner";
 
 import type {
+  SlotAppointment,
   TimeSlot,
   WeeklyAvailabilityDay,
   WeeklySchedule,
@@ -134,6 +149,38 @@ function getWeekStartKey(date: Date): string {
   return formatDateToLocal(startOfWeek(date, { weekStartsOn: 1 }));
 }
 
+function normalizeAppointmentTime(time: string): string {
+  return time.slice(0, 5);
+}
+
+function buildDashboardAppointmentUpdate(
+  appointment: Appointment,
+  status: "confirmed" | "rejected" | "completed" | "no_show",
+  cancellationReason?: string | null,
+) {
+  const payload = {
+    booking_customer_id: appointment.customer.id ?? 0,
+    service_id: appointment.service.id ?? 0,
+    barber_user_id: appointment.barber.id ?? 0,
+    appointment_date: appointment.appointment_date,
+    appointment_time: normalizeAppointmentTime(appointment.appointment_time),
+    duration_minutes: appointment.duration_minutes,
+    price: Number(appointment.price),
+    status,
+    notes: appointment.notes,
+    cancellation_reason: cancellationReason ?? null,
+  };
+  const validation = updateAppointmentSchema.safeParse(payload);
+
+  if (!validation.success) {
+    throw new Error(
+      validation.error.issues[0]?.message ?? "This booking cannot be updated.",
+    );
+  }
+
+  return payload;
+}
+
 function getStatusColor(status: string): string {
   switch (status) {
     case "completed":
@@ -188,10 +235,21 @@ function AppointmentDetailModal({
   slot,
   open,
   onClose,
+  onConfirm,
+  onReject,
+  onStatusChange,
+  actionDisabled = false,
 }: {
   slot: TimeSlot | null;
   open: boolean;
   onClose: () => void;
+  onConfirm?: (appointment: SlotAppointment) => void;
+  onReject?: (appointment: SlotAppointment) => void;
+  onStatusChange?: (
+    appointment: SlotAppointment,
+    status: "completed" | "no_show",
+  ) => void;
+  actionDisabled?: boolean;
 }) {
   if (!slot) return null;
   const { appointments } = slot;
@@ -206,7 +264,7 @@ function AppointmentDetailModal({
             {slot.time}
             {isMulti && (
               <span className="ml-1 text-sm font-normal text-gray-400">
-                ({appointments.length} appointments)
+                ({appointments.length} bookings)
               </span>
             )}
           </DialogTitle>
@@ -215,12 +273,27 @@ function AppointmentDetailModal({
         {appointments.map((appointment, index) => (
           <div key={appointment.id}>
             {index > 0 && <div className="my-3 border-t border-gray-100" />}
-            <div className="space-y-3">
+            <div className="relative space-y-3 pb-10">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-900">
                   {formatBookingId(appointment.id)}
                 </span>
-                <AppointmentStatusBadge status={appointment.status} />
+                <DashboardAppointmentActionMenu
+                  appointment={appointment}
+                  onConfirm={onConfirm ? (selectedAppointment) => {
+                    onClose();
+                    onConfirm(selectedAppointment);
+                  } : undefined}
+                  onReject={onReject ? (selectedAppointment) => {
+                    onClose();
+                    onReject(selectedAppointment);
+                  } : undefined}
+                  onStatusChange={onStatusChange ? (selectedAppointment, status) => {
+                    onClose();
+                    onStatusChange(selectedAppointment, status);
+                  } : undefined}
+                  disabled={actionDisabled}
+                />
               </div>
 
               <div className="space-y-2">
@@ -257,15 +330,15 @@ function AppointmentDetailModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs text-gray-500">Service</p>
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {sanitizeString(appointment.service || "—")}
-                  </p>
-                </div>
-                <div>
                   <p className="text-xs text-gray-500">Barber</p>
                   <p className="truncate text-sm font-medium text-gray-900">
                     {sanitizeString(appointment.barber || "—")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Service</p>
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {sanitizeString(appointment.service || "—")}
                   </p>
                 </div>
                 <div>
@@ -301,6 +374,9 @@ function AppointmentDetailModal({
                   </div>
                 </div>
               )}
+              <div className="absolute bottom-0 right-0">
+                <AppointmentStatusBadge status={appointment.status} />
+              </div>
             </div>
           </div>
         ))}
@@ -387,6 +463,156 @@ function WeeklyAvailabilityCard({
   );
 }
 
+function DashboardAppointmentActionMenu({
+  appointment,
+  onConfirm,
+  onReject,
+  onStatusChange,
+  disabled = false,
+}: {
+  appointment: SlotAppointment;
+  onConfirm?: (appointment: SlotAppointment) => void;
+  onReject?: (appointment: SlotAppointment) => void;
+  onStatusChange?: (
+    appointment: SlotAppointment,
+    status: "completed" | "no_show",
+  ) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isPending = appointment.status === "pending";
+  const isConfirmed = appointment.status === "confirmed";
+  const statusActionDisabled =
+    isConfirmed &&
+    appointment.appointment_date.split("T")[0] > formatDateToLocal(new Date());
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div className="relative z-20" ref={ref}>
+      <button
+        type="button"
+        aria-label={`Actions for ${formatBookingId(appointment.id)}`}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white/70 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-9 w-44 rounded-xl border border-gray-200 bg-white p-1.5 shadow-lg">
+          {isPending && onConfirm && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onConfirm(appointment);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-green-700 transition hover:bg-green-50"
+            >
+              <Check className="h-4 w-4" />
+              Confirm
+            </button>
+          )}
+          {isPending && onReject && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onReject(appointment);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-700 transition hover:bg-red-50"
+            >
+              <X className="h-4 w-4" />
+              Reject
+            </button>
+          )}
+          {isConfirmed && onStatusChange && (
+            <>
+              <button
+                type="button"
+                disabled={statusActionDisabled}
+                title={
+                  statusActionDisabled
+                    ? "This action is available on or after the booking date."
+                    : undefined
+                }
+                onClick={() => {
+                  if (statusActionDisabled) return;
+                  setOpen(false);
+                  onStatusChange(appointment, "completed");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
+                  statusActionDisabled
+                    ? "cursor-not-allowed text-gray-400"
+                    : "text-gray-700 transition hover:bg-gray-50",
+                )}
+              >
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                Completed
+              </button>
+              <button
+                type="button"
+                disabled={statusActionDisabled}
+                title={
+                  statusActionDisabled
+                    ? "This action is available on or after the booking date."
+                    : undefined
+                }
+                onClick={() => {
+                  if (statusActionDisabled) return;
+                  setOpen(false);
+                  onStatusChange(appointment, "no_show");
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
+                  statusActionDisabled
+                    ? "cursor-not-allowed text-gray-400"
+                    : "text-gray-700 transition hover:bg-gray-50",
+                )}
+              >
+                <UserX className="h-4 w-4 text-red-400" />
+                No-show
+              </button>
+            </>
+          )}
+          {!isPending && !isConfirmed && (
+            <p className="px-3 py-2 text-sm text-gray-400">No actions available</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SlotStatusBadges({ appointments }: { appointments: SlotAppointment[] }) {
+  const statuses = Array.from(
+    new Set(appointments.map((appointment) => appointment.status)),
+  );
+
+  return (
+    <div className="absolute bottom-3 right-3 flex max-w-[calc(100%-1.5rem)] flex-wrap justify-end gap-1">
+      {statuses.map((status) => (
+        <AppointmentStatusBadge key={status} status={status} />
+      ))}
+    </div>
+  );
+}
+
 function TimeSlotCard({
   slot,
   onClick,
@@ -429,29 +655,58 @@ function TimeSlotCard({
   if (count === 1) {
     const appointment = slot.appointments[0];
     return (
-      <button
-        type="button"
-        onClick={onClick}
+      <div
         className={cn(
-          "flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl border p-3 text-left transition-shadow hover:shadow-md",
+          "relative min-h-16 w-full rounded-xl border transition-shadow hover:shadow-md",
           getStatusColor(appointment.status),
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/50">
-          <Clock className="h-4 w-4 text-gray-600" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 pb-10 text-left"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/50">
+            <Clock className="h-4 w-4 text-gray-600" />
+          </div>
+          <div className="min-w-0 flex-1">
             <p className="shrink-0 text-sm font-semibold text-gray-900">
               {slot.time}
             </p>
-            <span className="hidden sm:inline-flex">
-              <AppointmentStatusBadge status={appointment.status} />
-            </span>
+            <p
+              className={cn(
+                "truncate text-xs text-gray-500",
+                slot.is_fully_booked && "font-medium text-red-600",
+              )}
+            >
+              <span className="lg:hidden">{compactAvailabilityLabel}</span>
+              <span className="hidden lg:inline">{availabilityLabel}</span>
+            </p>
           </div>
+        </button>
+        <SlotStatusBadges appointments={slot.appointments} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-16 w-full rounded-xl border border-purple-200 bg-purple-50 transition-shadow hover:shadow-md">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 pb-10 text-left"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-100">
+          <Clock className="h-4 w-4 text-purple-600" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-gray-900">{slot.time}</p>
+          <p className="truncate text-xs font-medium text-purple-600">
+            {count} bookings
+          </p>
           <p
             className={cn(
-              "truncate text-xs text-gray-500",
+              "truncate text-[11px] text-gray-500",
               slot.is_fully_booked && "font-medium text-red-600",
             )}
           >
@@ -460,34 +715,8 @@ function TimeSlotCard({
           </p>
         </div>
       </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 p-3 text-left transition-shadow hover:shadow-md"
-    >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-100">
-        <Clock className="h-4 w-4 text-purple-600" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-900">{slot.time}</p>
-        <p className="truncate text-xs font-medium text-purple-600">
-          {count} appointments
-        </p>
-        <p
-          className={cn(
-            "truncate text-[11px] text-gray-500",
-            slot.is_fully_booked && "font-medium text-red-600",
-          )}
-        >
-          <span className="lg:hidden">{compactAvailabilityLabel}</span>
-          <span className="hidden lg:inline">{availabilityLabel}</span>
-        </p>
-      </div>
-    </button>
+      <SlotStatusBadges appointments={slot.appointments} />
+    </div>
   );
 }
 
@@ -500,6 +729,11 @@ export function Overview() {
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [detailSlot, setDetailSlot] = useState<TimeSlot | null>(null);
+  const [dashboardRejectAppointment, setDashboardRejectAppointment] =
+    useState<Appointment | null>(null);
+  const [dashboardActionId, setDashboardActionId] = useState<number | null>(
+    null,
+  );
   const skipFirstRealtimeRefreshRef = useRef(true);
   const currentWeekKeyRef = useRef(getWeekStartKey(new Date()));
   const selectedDateKey = formatDateToLocal(selectedDate);
@@ -544,6 +778,145 @@ export function Overview() {
 
     await loadSchedule(signal);
   });
+
+  const resolveDashboardAppointment = async (
+    appointmentId: number,
+  ): Promise<Appointment> => {
+    const appointments = await getAppointments();
+    const appointment = appointments.find((item) => item.id === appointmentId);
+
+    if (!appointment) {
+      throw new Error("This booking is no longer available. Refresh and try again.");
+    }
+
+    return appointment;
+  };
+
+  const handleDashboardConfirm = async (slotAppointment: SlotAppointment) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+
+      if (appointment.batch_id) {
+        await updateBatchAppointmentStatus(appointment.batch_id, "confirmed");
+        toast.success("Group booking confirmed.");
+      } else {
+        const payload = buildDashboardAppointmentUpdate(
+          appointment,
+          "confirmed",
+        );
+        await updateAppointment(appointment.id, payload);
+        toast.success("Booking confirmed.");
+      }
+
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+    } catch (error) {
+      console.error("Failed to confirm dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not confirm this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardReject = async (slotAppointment: SlotAppointment) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      setDashboardRejectAppointment(appointment);
+    } catch (error) {
+      console.error("Failed to load dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not load this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardRejectSubmit = async (
+    data: CancellationReasonSchemaFormValues,
+  ) => {
+    const appointment = dashboardRejectAppointment;
+    if (!appointment || dashboardActionId !== null) return;
+
+    setDashboardActionId(appointment.id);
+    try {
+      const reason = data.cancellation_reason.trim();
+
+      if (appointment.batch_id) {
+        await updateBatchAppointmentStatus(
+          appointment.batch_id,
+          "rejected",
+          reason,
+        );
+        toast.success("Group booking rejected.");
+      } else {
+        const payload = buildDashboardAppointmentUpdate(
+          appointment,
+          "rejected",
+          reason,
+        );
+        await updateAppointment(appointment.id, payload);
+        toast.success("Booking rejected.");
+      }
+
+      setDashboardRejectAppointment(null);
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+    } catch (error) {
+      console.error("Failed to reject dashboard booking:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not reject this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
+
+  const handleDashboardStatusChange = async (
+    slotAppointment: SlotAppointment,
+    status: "completed" | "no_show",
+  ) => {
+    if (dashboardActionId !== null) return;
+
+    setDashboardActionId(slotAppointment.id);
+    try {
+      const appointment = await resolveDashboardAppointment(slotAppointment.id);
+      const payload = buildDashboardAppointmentUpdate(appointment, status);
+
+      await updateAppointment(appointment.id, payload);
+      toast.success(
+        status === "completed"
+          ? "Booking marked as completed."
+          : "Booking marked as no-show.",
+      );
+
+      await loadSchedule();
+      window.dispatchEvent(new CustomEvent("appointments:updated"));
+    } catch (error) {
+      console.error("Failed to update dashboard booking status:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not update this booking. Please try again.",
+      );
+    } finally {
+      setDashboardActionId(null);
+    }
+  };
 
   useEffect(() => {
     const loadClosedDates = async () => {
@@ -798,7 +1171,7 @@ export function Overview() {
           <span>{formatDisplayDate(selectedDate)}</span>
         </h2>
         <p className="mb-4 text-xs text-gray-400 sm:text-sm">
-          View appointments and barber availability (9:00 AM - 7:00 PM)
+          View bookings and barber availability (9:00 AM - 7:00 PM)
         </p>
 
         {scheduleLoading && !activeSchedule ? (
@@ -834,7 +1207,21 @@ export function Overview() {
         slot={detailSlot}
         open={detailSlot !== null}
         onClose={() => setDetailSlot(null)}
+        onConfirm={handleDashboardConfirm}
+        onReject={handleDashboardReject}
+        onStatusChange={handleDashboardStatusChange}
+        actionDisabled={dashboardActionId !== null}
       />
+
+      {dashboardRejectAppointment && (
+        <CancellationForm
+          appointment={dashboardRejectAppointment}
+          open={true}
+          mode="reject"
+          onClose={() => setDashboardRejectAppointment(null)}
+          onSubmit={handleDashboardRejectSubmit}
+        />
+      )}
     </div>
   );
 }

@@ -39,7 +39,7 @@ export function Walkin() {
           Walk-ins
         </h1>
         <p className="text-gray-500 mt-1">
-          Record walk-in appointments
+          Record walk-in bookings
         </p>
       </div>
 

@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-export const MAX_BOOKING_DAYS_AHEAD = 7;
-
 export const appointmentStatusSchema = z.enum([
   "pending",
   "confirmed",
@@ -11,27 +9,13 @@ export const appointmentStatusSchema = z.enum([
   "rejected",
 ]);
 
-const bookingTimePattern = /^(09|1[0-1]):00$|^12:30$|^(1[3-9]):00$/;
+const bookingTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 const bookingDateSchema = z
   .string()
   .min(1)
   .refine((value) => !Number.isNaN(new Date(`${value}T00:00:00`).getTime()), {
-    message: "Appointment date must be a valid date.",
-  })
-  .refine(
-    (value) => {
-      const date = new Date(`${value}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const latest = new Date(today);
-      latest.setDate(latest.getDate() + MAX_BOOKING_DAYS_AHEAD);
-      return date >= today && date <= latest;
-    },
-    { message: "Appointments may only be booked up to 7 days in advance." },
-  )
-  .refine((value) => new Date(`${value}T00:00:00`).getDay() !== 0, {
-    message: "Appointments cannot be booked on Sundays.",
+    message: "Booking date must be a valid date.",
   });
 
 const baseAppointmentSchema = z.object({
@@ -43,7 +27,7 @@ const baseAppointmentSchema = z.object({
     .string()
     .regex(
       bookingTimePattern,
-      "Appointment time must be on the hour from 09:00 through 19:00.",
+      "Booking time must use the HH:mm format.",
     ),
   duration_minutes: z.number().int().min(1).nullable().optional(),
   price: z.number().int("Price must be a whole number").min(0).max(999999),
@@ -62,13 +46,13 @@ const updateBaseSchema = z.object({
     .string()
     .min(1)
     .refine((value) => !Number.isNaN(new Date(value).getTime()), {
-      message: "Appointment date must be a valid date.",
+      message: "Booking date must be a valid date.",
     }),
   appointment_time: z
     .string()
     .regex(
       bookingTimePattern,
-      "Appointment time must be on the hour from 09:00 through 19:00.",
+      "Booking time must use the HH:mm format.",
     ),
   duration_minutes: z.number().int().min(1).nullable().optional(),
   price: z.number().int("Price must be a whole number").min(0).max(999999),
@@ -94,7 +78,7 @@ const batchSlotSchema = z.object({
     .string()
     .regex(
       bookingTimePattern,
-      "Appointment time must be on the hour from 09:00 through 19:00.",
+      "Booking time must use the HH:mm format.",
     ),
   duration_minutes: z.number().int().min(1).optional(),
   price: z.number().int("Price must be a whole number").min(0).max(999999),

@@ -455,8 +455,8 @@ export async function downloadAnalyticsReportPdf(
   const ratingSentence =
     ratingCount > 0
       ? `Customers provided an average rating of ${kpi.average_rating.toFixed(1)}/5 from ${formatCount(ratingCount)} submitted ratings.`
-      : "No customer ratings were submitted for appointments in this period.";
-  const summary = `From ${formatDate(kpi.date_range.from)} through ${formatDate(kpi.date_range.to)}, TOL Barbershop generated ${formatCurrency(kpi.total_revenue)} from ${formatCount(kpi.completed_appointments)} completed appointments, serving ${formatCount(kpi.total_customers)} booking customers. The completion rate was ${formatPercent(kpi.completion_rate)}. ${ratingSentence}`;
+      : "No customer ratings were submitted for bookings in this period.";
+  const summary = `From ${formatDate(kpi.date_range.from)} through ${formatDate(kpi.date_range.to)}, TOL Barbershop generated ${formatCurrency(kpi.total_revenue)} from ${formatCount(kpi.completed_appointments)} completed bookings, serving ${formatCount(kpi.total_customers)} booking customers. The completion rate was ${formatPercent(kpi.completion_rate)}. ${ratingSentence}`;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(...SLATE);
@@ -505,12 +505,12 @@ export async function downloadAnalyticsReportPdf(
   }
   if (topService && topService.completed_count > 0) {
     highlights.push(
-      `Leading service: ${sanitizeString(topService.service_name)}, with ${formatCount(topService.completed_count)} completed appointments and ${formatCurrency(topService.revenue)} in revenue.`,
+      `Leading service: ${sanitizeString(topService.service_name)}, with ${formatCount(topService.completed_count)} completed bookings and ${formatCurrency(topService.revenue)} in revenue.`,
     );
   }
   if (topBarber && topBarber.completed_count > 0) {
     highlights.push(
-      `Leading barber by revenue: ${sanitizeString(topBarber.barber_name)}, completing ${formatCount(topBarber.completed_count)} appointments and generating ${formatCurrency(topBarber.revenue)}.`,
+      `Leading barber by revenue: ${sanitizeString(topBarber.barber_name)}, completing ${formatCount(topBarber.completed_count)} bookings and generating ${formatCurrency(topBarber.revenue)}.`,
     );
   }
   if (
@@ -520,12 +520,12 @@ export async function downloadAnalyticsReportPdf(
     busiestHour.count > 0
   ) {
     highlights.push(
-      `Highest demand occurred on ${busiestDay.day}s, with ${formatCount(busiestDay.total)} appointments; the busiest recorded hour was ${formatTime12(busiestHour.hour)} with ${formatCount(busiestHour.count)} appointments.`,
+      `Highest demand occurred on ${busiestDay.day}s, with ${formatCount(busiestDay.total)} bookings; the busiest recorded hour was ${formatTime12(busiestHour.hour)} with ${formatCount(busiestHour.count)} bookings.`,
     );
   }
   if (resolvedAppointments > 0) {
     highlights.push(
-      `${formatCount(totalCancelled)} cancellations and ${formatCount(totalNoShow)} no-shows represented ${formatPercent(calculatePercent(totalCancelled + totalNoShow, resolvedAppointments))} of resolved appointments.`,
+      `${formatCount(totalCancelled)} cancellations and ${formatCount(totalNoShow)} no-shows represented ${formatPercent(calculatePercent(totalCancelled + totalNoShow, resolvedAppointments))} of resolved bookings.`,
     );
   }
 
@@ -550,7 +550,7 @@ export async function downloadAnalyticsReportPdf(
   doc.setFontSize(8.5);
   doc.setTextColor(...MUTED);
   doc.text(
-    "Revenue and resolved appointment outcomes for every recorded reporting bucket.",
+    "Revenue and resolved booking outcomes for every recorded reporting bucket.",
     MARGIN,
     y,
   );
@@ -786,7 +786,7 @@ export async function downloadAnalyticsReportPdf(
     autoTable(doc, {
       ...baseTableOptions(),
       startY: y,
-      head: [["Time", "Appointments", "Share"]],
+      head: [["Time", "Bookings", "Share"]],
       body: peakHourStats.map((item) => [
         formatTime12(item.hour),
         formatCount(item.count),

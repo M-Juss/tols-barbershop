@@ -45,6 +45,7 @@ export function generateTimeOptions(
   openingTime: string,
   closingTime: string,
   intervalMinutes: number,
+  customOpenTime?: string,
 ): TimeOption[] {
   const options: TimeOption[] = [];
   const [openH, openM] = openingTime.split(":").map(Number);
@@ -59,10 +60,18 @@ export function generateTimeOptions(
     const period = hours >= 12 ? "PM" : "AM";
     const displayH = hours % 12 || 12;
 
-    if (hours === 12 && mins === 0) {
-      options.push({ value: "12:30 PM", label: "12:30 PM" });
-      currentMinutes += intervalMinutes;
-      continue;
+    if (hours === 12 && mins === 0 && customOpenTime) {
+      const customMinutes = timeToMinutes(customOpenTime);
+      if (customMinutes !== null) {
+        const customHours = Math.floor(customMinutes / 60);
+        const customMins = customMinutes % 60;
+        const customPeriod = customHours >= 12 ? "PM" : "AM";
+        const customDisplayHour = customHours % 12 || 12;
+        const customValue = `${customDisplayHour}:${String(customMins).padStart(2, "0")} ${customPeriod}`;
+        options.push({ value: customValue, label: customValue });
+        currentMinutes += intervalMinutes;
+        continue;
+      }
     }
 
     const value = `${displayH}:${String(mins).padStart(2, "0")} ${period}`;

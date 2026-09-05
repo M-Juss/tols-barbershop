@@ -133,8 +133,8 @@ export function useAppointmentHistory() {
         setMeta(data.meta);
       } catch (fetchError) {
         if (signal?.aborted || requestId !== requestIdRef.current) return;
-        console.error("Failed to load appointment history:", fetchError);
-        setError("Could not load appointment history. Please try again.");
+        console.error("Failed to load booking history:", fetchError);
+        setError("Could not load booking history. Please try again.");
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);

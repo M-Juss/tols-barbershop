@@ -33,13 +33,16 @@ export function TestimonialsSection() {
         const data = await getFeaturedFeedback();
         if (data.length > 0) {
           setTestimonials(data);
+          setCurrentIndex(0);
           return;
         }
       } catch {}
 
       try {
         const data = await getLandingFeedback();
-        setTestimonials(data);
+        const randomFeedback = data[Math.floor(Math.random() * data.length)];
+        setTestimonials(randomFeedback ? [randomFeedback] : []);
+        setCurrentIndex(0);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Unknown error";
@@ -93,9 +96,15 @@ export function TestimonialsSection() {
                 ))}
               </div>
 
-              <p className="mb-8 text-pretty text-lg leading-8 text-white/90 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)] sm:text-xl lg:text-2xl">
-                &quot;{currentTestimonial.comment}&quot;
-              </p>
+              {currentTestimonial.comment ? (
+                <p className="mb-8 text-pretty text-lg leading-8 text-white/90 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)] sm:text-xl lg:text-2xl">
+                  &quot;{currentTestimonial.comment}&quot;
+                </p>
+              ) : (
+                <p className="mb-8 text-pretty text-lg leading-8 text-white/90 drop-shadow-[0_2px_5px_rgba(0,0,0,0.35)] sm:text-xl lg:text-2xl">
+                  Rated {currentTestimonial.rating} out of 5 stars.
+                </p>
+              )}
 
               <div className="mb-1 flex items-center space-x-3">
                 <p className="flex h-12 w-12 items-center justify-center rounded-full bg-accent font-bold shadow-lg shadow-accent/15">

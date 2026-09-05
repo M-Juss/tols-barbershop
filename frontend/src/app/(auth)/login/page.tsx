@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { LoginForm } from "@/forms/LoginForm";
 import { RedirectIfAuthenticated } from "@/components/common/RedirectIfAuthenticated";
@@ -24,7 +25,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <RedirectIfAuthenticated>
-      <div className="min-h-screen flex items-center justify-center bg-primary p-4">
+      <div className="relative flex min-h-screen items-center justify-center bg-primary p-4">
+        <Link
+          href="/"
+          aria-label="Back to home"
+          className="absolute top-4 left-4 rounded-md p-2 text-white/80 transition hover:bg-white/10 hover:text-white sm:top-6 sm:left-6"
+        >
+          <ArrowLeft className="size-5" />
+        </Link>
         <div className="mobile-modal-surface flex w-full max-w-sm flex-col items-center rounded-lg bg-white px-5 py-6 shadow-md animate-auth-card sm:px-8">
           <div className="flex items-center gap-2">
             <Image
