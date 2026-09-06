@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Shield,
   Check,
+  ChevronDown,
   Mail,
   Phone,
 } from "lucide-react";
@@ -87,6 +88,7 @@ export function Admin() {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleName, setRoleName] = useState("");
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
+  const [expandedModuleKeys, setExpandedModuleKeys] = useState<string[]>([]);
 
   const [deleteRoleConfirmOpen, setDeleteRoleConfirmOpen] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<number | null>(null);
@@ -182,7 +184,8 @@ export function Admin() {
   const openAddRole = () => {
     setEditingRole(null);
     setRoleName("");
-    setSelectedModuleIds(modules.length > 0 ? [modules[0].id] : []);
+    setSelectedModuleIds([]);
+    setExpandedModuleKeys([]);
     setShowRoleModal(true);
   };
 
@@ -190,6 +193,11 @@ export function Admin() {
     setEditingRole(role);
     setRoleName(role.name);
     setSelectedModuleIds(role.modules.map((m) => m.id));
+    setExpandedModuleKeys(
+      role.modules.some((module) => module.parent_key !== null)
+        ? ["management"]
+        : [],
+    );
     setShowRoleModal(true);
   };
 
@@ -273,6 +281,44 @@ export function Admin() {
         ? prev.filter((id) => id !== moduleId)
         : [...prev, moduleId],
     );
+  };
+
+  const toggleModuleGroup = (module: Module, children: Module[]) => {
+    if (children.length === 0) {
+      toggleModule(module.id);
+      return;
+    }
+
+    const childIds = children.map((child) => child.id);
+    setSelectedModuleIds((previous) => {
+      const hasAllChildren = childIds.every((id) => previous.includes(id));
+      if (previous.includes(module.id) || hasAllChildren) {
+        return previous.filter((id) => id !== module.id && !childIds.includes(id));
+      }
+
+      return [...new Set([...previous, module.id, ...childIds])];
+    });
+  };
+
+  const toggleModuleChild = (parent: Module, children: Module[], childId: number) => {
+    setSelectedModuleIds((previous) => {
+      if (previous.includes(parent.id)) {
+        return [
+          ...children
+            .map((child) => child.id)
+            .filter((id) => id !== childId),
+        ];
+      }
+
+      const next = previous.includes(childId)
+        ? previous.filter((id) => id !== childId)
+        : [...previous, childId];
+      const childIds = children.map((child) => child.id);
+      const allChildrenSelected = childIds.every((id) => next.includes(id));
+
+      if (allChildrenSelected) return [...new Set([...next, parent.id])];
+      return next.filter((id) => id !== parent.id);
+    });
   };
 
   if (loading) {
@@ -663,44 +709,93 @@ export function Admin() {
                 Module Permissions
               </p>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-2">
-                {(() => {
-                  const categories = [
-                    { label: "Overview", keys: ["dashboard"] },
-                    { label: "Operations", keys: ["appointment", "walkin", "history"] },
-                    { label: "Administration", keys: ["management"] },
-                    { label: "Analytics", keys: ["reports", "feedback"] },
-                  ];
-                  const moduleByKey = Object.fromEntries(
-                    modules.map((m) => [m.key, m]),
-                  );
-                  return categories.map((cat) => {
-                    const catModules = cat.keys
-                      .map((k) => moduleByKey[k])
-                      .filter(Boolean);
-                    if (catModules.length === 0) return null;
-                    return (
-                      <div key={cat.label}>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                          {cat.label}
-                        </p>
-                        <div className="space-y-1 pl-2">
-                          {catModules.map((mod) => (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {modules
+                    .filter((module) => module.parent_key === null)
+                    .map((module) => {
+                      const children = modules.filter(
+                        (child) => child.parent_key === module.key,
+                      );
+                      const isExpanded = expandedModuleKeys.includes(module.key);
+                      const allChildrenSelected =
+                        children.length > 0 &&
+                        children.every((child) => selectedModuleIds.includes(child.id));
+                      const isSelected = selectedModuleIds.includes(module.id) || allChildrenSelected;
+
+                      return (
+                        <div
+                          key={module.id}
+                          className={cn(
+                            "rounded-lg border border-gray-200 transition-colors hover:bg-gray-50",
+                            children.length > 0 && "sm:col-span-2",
+                          )}
+                        >
+                          <div className="flex items-start gap-3 p-3">
                             <CheckboxWithLabel
-                              key={mod.id}
-                              id={`module-${mod.id}`}
-                              label={mod.name}
-                              checked={selectedModuleIds.includes(mod.id)}
-                              onCheckedChange={() => toggleModule(mod.id)}
-                              containerClassName="rounded-lg border border-gray-200 p-2.5 transition-colors hover:bg-gray-50"
+                              id={`module-${module.id}`}
+                              label={
+                                <span>
+                                  <span className="block font-semibold text-gray-900">
+                                    {module.name}
+                                  </span>
+                                  {children.length > 0 && (
+                                    <span className="block text-xs font-normal text-gray-500">
+                                      Select all {module.name} workspaces, then clear any submodule this role should not use.
+                                    </span>
+                                  )}
+                                </span>
+                              }
+                              checked={isSelected}
+                              onCheckedChange={() => toggleModuleGroup(module, children)}
+                              containerClassName="flex-1 border-0 p-0"
                               className="mt-0.5 border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
-                              labelClassName="flex-1 font-medium text-gray-900"
+                              labelClassName="flex-1"
                             />
-                          ))}
+                            {children.length > 0 && (
+                              <button
+                                type="button"
+                                aria-label={`${isExpanded ? "Hide" : "Show"} ${module.name} submodules`}
+                                onClick={() =>
+                                  setExpandedModuleKeys((previous) =>
+                                    previous.includes(module.key)
+                                      ? previous.filter((key) => key !== module.key)
+                                      : [...previous, module.key],
+                                  )
+                                }
+                                className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
+                              >
+                                <ChevronDown
+                                  className={cn("h-5 w-5 transition-transform", isExpanded && "rotate-180")}
+                                />
+                              </button>
+                            )}
+                          </div>
+
+                          {isExpanded && children.length > 0 && (
+                            <div className="grid gap-2 border-t border-gray-200 bg-gray-50/60 p-3 sm:grid-cols-2">
+                              {children.map((child) => (
+                                <CheckboxWithLabel
+                                  key={child.id}
+                                  id={`module-${child.id}`}
+                                  label={child.name}
+                                  checked={
+                                    selectedModuleIds.includes(module.id) ||
+                                    selectedModuleIds.includes(child.id)
+                                  }
+                                  onCheckedChange={() =>
+                                    toggleModuleChild(module, children, child.id)
+                                  }
+                                  containerClassName="rounded-lg border border-gray-200 bg-white p-2.5 transition-colors hover:bg-gray-50"
+                                  className="mt-0.5 border-gray-300 data-checked:border-red-500 data-checked:bg-red-500"
+                                  labelClassName="flex-1 font-medium text-gray-900"
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    );
-                  });
-                })()}
+                      );
+                    })}
+                </div>
               </div>
             </div>
           </div>

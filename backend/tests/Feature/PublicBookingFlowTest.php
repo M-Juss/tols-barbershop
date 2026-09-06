@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
@@ -109,12 +110,171 @@ it('creates a pending public booking only after the emailed otp is verified', fu
         ->and($appointment->status)->toBe('pending')
         ->and($appointment->booking_customer_id)->toBe($customer->id)
         ->and($appointment->customer_email_snapshot)->toBe('jamie@example.test')
-        ->and($appointment->emailDeliveries()->where('type', 'pending')->where('status', 'sent')->exists())->toBeTrue();
+        ->and($appointment->emailDeliveries()->exists())->toBeFalse();
 
     $this->postJson('/api/v1/public-booking/verify-otp', [
         'request_token' => $token,
         'otp' => $otp,
     ])->assertUnprocessable();
+});
+
+it('reuses a phone-only crm customer when public booking adds a verified email', function () {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $customer = BookingCustomer::create([
+        'fullname' => 'Assisted First Visit',
+        'email' => null,
+        'contact_number' => '09171234567',
+    ]);
+    $otp = null;
+
+    $request = $this->postJson(
+        '/api/v1/public-booking/request-otp',
+        publicBookingPayload($barber, $service),
+    )->assertOk();
+
+    Notification::assertSentOnDemand(
+        BookingMailNotification::class,
+        function (BookingMailNotification $notification) use (&$otp): bool {
+            if ($notification->content['subject'] !== 'Your TOL Barbershop booking verification code') {
+                return false;
+            }
+            $otp = $notification->content['highlight'];
+
+            return true;
+        },
+    );
+
+    $this->postJson('/api/v1/public-booking/verify-otp', [
+        'request_token' => $request->json('data.request_token'),
+        'otp' => $otp,
+    ])->assertCreated();
+
+    expect(BookingCustomer::count())->toBe(1)
+        ->and($customer->refresh()->email)->toBe('jamie@example.test')
+        ->and($customer->fullname)->toBe('Jamie Dela Cruz')
+        ->and(Appointment::sole()->booking_customer_id)->toBe($customer->id)
+        ->and(Appointment::sole()->booking_source)->toBe('public');
+});
+
+it('defers five-member group reservations until staff confirms the group', function () {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $otp = null;
+    $groupAppointments = collect(['09:00', '10:00', '11:00', '12:30', '13:00'])
+        ->map(fn (string $time, int $index): array => [
+            'customer_name' => $index === 0 ? null : 'Group Member '.['Two', 'Three', 'Four', 'Five'][$index - 1],
+            'service_id' => $service->id,
+            'appointment_time' => $time,
+        ])
+        ->all();
+
+    $request = $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service, [
+        'mode' => 'group',
+        'appointments' => $groupAppointments,
+    ]))->assertOk();
+
+    Notification::assertSentOnDemand(
+        BookingMailNotification::class,
+        function (BookingMailNotification $notification) use (&$otp): bool {
+            $otp = $notification->content['highlight'];
+
+            return true;
+        },
+    );
+
+    $verified = $this->postJson('/api/v1/public-booking/verify-otp', [
+        'request_token' => $request->json('data.request_token'),
+        'otp' => $otp,
+    ])->assertCreated();
+
+    $batchId = $verified->json('data.batch_id');
+    $appointments = Appointment::where('batch_id', $batchId)->orderBy('id')->get();
+    expect($appointments)->toHaveCount(5)
+        ->and($appointments->every(fn (Appointment $appointment): bool => $appointment->status === 'pending'))
+        ->toBeTrue()
+        ->and($appointments->every(fn (Appointment $appointment): bool => $appointment->active_slot_key === null))
+        ->toBeTrue();
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-04")
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $manager = User::factory()->create(['role' => 'manager', 'is_active' => true]);
+    Sanctum::actingAs($manager);
+
+    $this->putJson("/api/v1/appointments/batch/{$batchId}/status", ['status' => 'confirmed'])
+        ->assertOk();
+
+    $appointments = Appointment::where('batch_id', $batchId)->orderBy('id')->get();
+    expect($appointments->every(fn (Appointment $appointment): bool => $appointment->status === 'confirmed'))
+        ->toBeTrue()
+        ->and($appointments->every(fn (Appointment $appointment): bool => $appointment->active_slot_key !== null))
+        ->toBeTrue();
+
+    $this->getJson("/api/v1/public-booking/available-slots?barber_id={$barber->id}&date=2026-09-04")
+        ->assertOk()
+        ->assertJsonCount(5, 'data');
+});
+
+it('reports a conflict when staff confirms a deferred group reservation', function () {
+    Notification::fake();
+    [$barber, $service] = bookingResources();
+    $otp = null;
+    $groupAppointments = collect(['09:00', '10:00', '11:00', '12:30', '13:00'])
+        ->map(fn (string $time, int $index): array => [
+            'customer_name' => $index === 0 ? null : 'Group Member '.['Two', 'Three', 'Four', 'Five'][$index - 1],
+            'service_id' => $service->id,
+            'appointment_time' => $time,
+        ])
+        ->all();
+
+    $request = $this->postJson('/api/v1/public-booking/request-otp', publicBookingPayload($barber, $service, [
+        'mode' => 'group',
+        'appointments' => $groupAppointments,
+    ]))->assertOk();
+
+    Notification::assertSentOnDemand(
+        BookingMailNotification::class,
+        function (BookingMailNotification $notification) use (&$otp): bool {
+            $otp = $notification->content['highlight'];
+
+            return true;
+        },
+    );
+
+    $verified = $this->postJson('/api/v1/public-booking/verify-otp', [
+        'request_token' => $request->json('data.request_token'),
+        'otp' => $otp,
+    ])->assertCreated();
+
+    $batchId = $verified->json('data.batch_id');
+    $customer = BookingCustomer::sole();
+    Appointment::create([
+        'booking_customer_id' => $customer->id,
+        'service_id' => $service->id,
+        'barber_user_id' => $barber->id,
+        'appointment_date' => '2026-09-04',
+        'appointment_time' => '09:00',
+        'duration_minutes' => $service->duration,
+        'price' => $service->price,
+        'status' => 'confirmed',
+        'active_slot_key' => "{$barber->id}|2026-09-04|09:00",
+        'confirmed_at' => now(),
+    ]);
+
+    $manager = User::factory()->create(['role' => 'manager', 'is_active' => true]);
+    Sanctum::actingAs($manager);
+
+    $this->putJson("/api/v1/appointments/batch/{$batchId}/status", ['status' => 'confirmed'])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Cannot process this group booking because one or more requested times conflict with an existing booking.');
+
+    $appointments = Appointment::where('batch_id', $batchId)->get();
+    expect($appointments->every(fn (Appointment $appointment): bool => $appointment->status === 'pending'))
+        ->toBeTrue()
+        ->and($appointments->every(fn (Appointment $appointment): bool => $appointment->active_slot_key === null))
+        ->toBeTrue();
 });
 
 it('creates only one rating for a completed group booking', function () {

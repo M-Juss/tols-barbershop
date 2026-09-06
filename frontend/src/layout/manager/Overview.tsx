@@ -603,11 +603,29 @@ function SlotStatusBadges({ appointments }: { appointments: SlotAppointment[] })
   const statuses = Array.from(
     new Set(appointments.map((appointment) => appointment.status)),
   );
+  const statusLabels = statuses.map((status) => status.replace("_", "-"));
 
   return (
-    <div className="absolute bottom-3 right-3 flex max-w-[calc(100%-1.5rem)] flex-wrap justify-end gap-1">
+    <div
+      className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-1"
+      aria-label={`Booking status: ${statusLabels.join(", ")}`}
+    >
       {statuses.map((status) => (
-        <AppointmentStatusBadge key={status} status={status} />
+        <span
+          key={status}
+          role="img"
+          aria-label={status.replace("_", "-")}
+          title={status.replace("_", "-")}
+          className={cn(
+            "size-2.5 rounded-full ring-2 ring-white/70",
+            status === "pending" && "bg-yellow-500",
+            status === "confirmed" && "bg-blue-500",
+            status === "completed" && "bg-green-500",
+            status === "cancelled" && "bg-red-500",
+            status === "rejected" && "bg-orange-500",
+            status === "no_show" && "bg-gray-500",
+          )}
+        />
       ))}
     </div>
   );
@@ -664,7 +682,7 @@ function TimeSlotCard({
         <button
           type="button"
           onClick={onClick}
-          className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 pb-10 text-left"
+          className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 text-left"
         >
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/50">
             <Clock className="h-4 w-4 text-gray-600" />
@@ -692,9 +710,9 @@ function TimeSlotCard({
   return (
     <div className="relative min-h-16 w-full rounded-xl border border-purple-200 bg-purple-50 transition-shadow hover:shadow-md">
       <button
-        type="button"
-        onClick={onClick}
-        className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 pb-10 text-left"
+      type="button"
+      onClick={onClick}
+      className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-xl bg-transparent p-3 text-left"
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-100">
           <Clock className="h-4 w-4 text-purple-600" />

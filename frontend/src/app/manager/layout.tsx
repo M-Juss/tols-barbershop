@@ -3,13 +3,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRealtimeEvent } from "@/contexts/RealtimeContext";
 import {
-  Calendar,
   BriefcaseBusiness,
+  Clock3,
   History,
+  Images,
   UserPlus,
   LayoutDashboard,
   BarChart3,
   MessageSquareText,
+  Scissors,
+  Settings,
+  ShieldCheck,
 } from "lucide-react";
 import { ResponsiveSidebar } from "@/components/common/ResponsiveSidebar";
 import { NotificationPrompt } from "@/components/common/NotificationPrompt";
@@ -35,7 +39,19 @@ const navSections = [
   {
     label: "Administration",
     items: [
-      { key: "management", href: "/manager/management", icon: Calendar, label: "Management" },
+      {
+        key: "management",
+        href: "/manager/management",
+        icon: Settings,
+        label: "Management",
+        children: [
+          { key: "management-services", href: "/manager/management/services", icon: Scissors, label: "Services & Add-ons" },
+          { key: "management-admins", href: "/manager/management/admins", icon: ShieldCheck, label: "Admins & Roles" },
+          { key: "management-barbers", href: "/manager/management/barbers", icon: UserPlus, label: "Barbers" },
+          { key: "management-schedule", href: "/manager/management/booking-schedule", icon: Clock3, label: "Booking Schedule" },
+          { key: "management-gallery", href: "/manager/management/gallery", icon: Images, label: "Gallery" },
+        ],
+      },
     ],
   },
   {

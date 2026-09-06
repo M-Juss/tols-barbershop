@@ -243,7 +243,7 @@ export function CustomerDirectory() {
           Customers
         </h1>
         <p className="text-gray-500 mt-1">
-          View booking customers grouped by their verified email address
+          View customer history, preferences, and booking activity
         </p>
       </div>
 

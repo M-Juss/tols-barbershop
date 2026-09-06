@@ -3,13 +3,38 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useRealtimeEvent } from "@/contexts/RealtimeContext";
-import { Calendar, LayoutDashboard, History, UserPlus, MessageSquareText, Settings, BarChart3 } from "lucide-react";
+import {
+  BarChart3,
+  Calendar,
+  Clock3,
+  History,
+  Images,
+  LayoutDashboard,
+  MessageSquareText,
+  Scissors,
+  Settings,
+  UserPlus,
+} from "lucide-react";
 import { ResponsiveSidebar } from "@/components/common/ResponsiveSidebar";
 import { NotificationPrompt } from "@/components/common/NotificationPrompt";
 import { toast } from "sonner";
 import { useRoleRoutePersistence } from "@/hooks/useRoleRoutePersistence";
 import { useAuth } from "@/contexts/AuthContext";
 import { getNavigationSummary } from "@/services/shared/navigation.api";
+
+type NavItem = {
+  key: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  badgeCount?: number;
+  children?: NavItem[];
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
 
 const navSections = [
   {
@@ -29,7 +54,18 @@ const navSections = [
   {
     label: "Administration",
     items: [
-      { key: "management", href: "/admin/management", icon: Settings, label: "Management" },
+      {
+        key: "management",
+        href: "/admin/management",
+        icon: Settings,
+        label: "Management",
+        children: [
+          { key: "management-services", href: "/admin/management/services", icon: Scissors, label: "Services & Add-ons" },
+          { key: "management-barbers", href: "/admin/management/barbers", icon: UserPlus, label: "Barbers" },
+          { key: "management-schedule", href: "/admin/management/booking-schedule", icon: Clock3, label: "Booking Schedule" },
+          { key: "management-gallery", href: "/admin/management/gallery", icon: Images, label: "Gallery" },
+        ],
+      },
     ],
   },
   {
@@ -39,9 +75,76 @@ const navSections = [
       { key: "feedback", href: "/admin/feedback", icon: MessageSquareText, label: "Feedback" },
     ],
   },
-];
+ ] satisfies NavSection[];
 const navItems = navSections.flatMap((section) => section.items);
 const noPermissions: string[] = [];
+
+const matchesPath = (item: NavItem, pathname: string): boolean =>
+  item.href === "/admin"
+    ? pathname === item.href
+    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+const findRequiredPermission = (
+  items: NavItem[],
+  pathname: string,
+): string | undefined => {
+  for (const item of items) {
+    const childPermission = item.children
+      ? findRequiredPermission(item.children, pathname)
+      : undefined;
+    if (childPermission) return childPermission;
+    if (matchesPath(item, pathname)) return item.key;
+  }
+  return undefined;
+};
+
+const hasPathPermission = (
+  items: NavItem[],
+  pathname: string,
+  permissions: string[],
+  parentGranted = false,
+): boolean | undefined => {
+  for (const item of items) {
+    const granted = parentGranted || permissions.includes(item.key);
+    if (item.children?.some((child) => matchesPath(child, pathname))) {
+      return hasPathPermission(item.children, pathname, permissions, granted);
+    }
+    if (matchesPath(item, pathname)) return granted;
+  }
+  return undefined;
+};
+
+const findFallbackPath = (
+  items: NavItem[],
+  permissions: string[],
+): string | undefined => {
+  for (const item of items) {
+    const inheritedPermission = permissions.includes(item.key);
+    if (item.children) {
+      const childPath = findFallbackPath(item.children, permissions);
+      if (childPath) return childPath;
+    }
+    if (inheritedPermission || !item.children?.length) {
+      if (permissions.includes(item.key)) return item.href;
+    }
+  }
+  return undefined;
+};
+
+const filterNavItem = (
+  item: NavItem,
+  permissions: string[],
+  parentGranted = false,
+): NavItem | null => {
+  const granted = parentGranted || permissions.includes(item.key);
+  const children = item.children
+    ?.map((child) => filterNavItem(child, permissions, granted))
+    .filter((child): child is NavItem => child !== null);
+
+  if (!granted && (!children || children.length === 0)) return null;
+
+  return children ? { ...item, children } : item;
+};
 
 export default function AdminLayout({
   children,
@@ -56,19 +159,14 @@ export default function AdminLayout({
   const prevCountRef = useRef(0);
   const isFirstLoadRef = useRef(true);
   const permissions = user?.permissions ?? noPermissions;
-  const fallbackPath = navItems.find((item) =>
-    permissions.includes(item.key),
-  )?.href;
-  const requiredPermission = navItems.find((item) =>
-    item.href === "/admin"
-      ? pathname === item.href
-      : pathname === item.href || pathname.startsWith(`${item.href}/`),
-  )?.key;
+  const fallbackPath = findFallbackPath(navItems, permissions);
+  const requiredPermission = findRequiredPermission(navItems, pathname);
+  const hasRequiredPermission = hasPathPermission(navItems, pathname, permissions);
   const canViewAppointments = permissions.includes("appointment");
 
   useEffect(() => {
     if (isLoading || user?.role !== "admin" || !requiredPermission) return;
-    if (permissions.includes(requiredPermission)) return;
+    if (hasRequiredPermission !== false) return;
 
     if (fallbackPath) router.replace(fallbackPath);
   }, [
@@ -76,6 +174,7 @@ export default function AdminLayout({
     isLoading,
     permissions,
     requiredPermission,
+    hasRequiredPermission,
     router,
     user?.role,
   ]);
@@ -123,7 +222,9 @@ export default function AdminLayout({
   const sections = navSections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => permissions.includes(item.key)),
+      items: section.items
+        .map((item) => filterNavItem(item, permissions))
+        .filter((item): item is NavItem => item !== null),
     }))
     .filter((section) => section.items.length > 0)
     .map((section) => ({
@@ -134,7 +235,12 @@ export default function AdminLayout({
       }),
     }));
 
-  if (!isLoading && user?.role === "admin" && permissions.length === 0) {
+  if (
+    !isLoading &&
+    user?.role === "admin" &&
+    permissions.length === 0 &&
+    pathname !== "/admin/profile"
+  ) {
     return (
       <div className="flex h-dvh overflow-hidden">
         <ResponsiveSidebar sections={[]} />
@@ -155,7 +261,7 @@ export default function AdminLayout({
   if (
     !isLoading &&
     requiredPermission &&
-    !permissions.includes(requiredPermission)
+    hasRequiredPermission === false
   ) {
     return null;
   }

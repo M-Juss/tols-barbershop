@@ -23,10 +23,23 @@ class EnsureModulePermission
             return $next($request);
         }
 
-        $hasPermission = $moduleKeys !== []
-            && $user->roleModel()
-                ->whereHas('modules', fn ($query) => $query->whereIn('key', $moduleKeys))
+        $hasPermission = false;
+
+        if ($moduleKeys !== []) {
+            $hasPermission = $user->roleModel()
+                ->whereHas('modules', function ($query) use ($moduleKeys): void {
+                    $query->whereIn('key', $moduleKeys);
+
+                    if ($moduleKeys === ['management']) {
+                        $query->orWhere('key', 'like', 'management-%');
+                    }
+
+                    if (count($moduleKeys) === 1 && str_starts_with($moduleKeys[0], 'management-')) {
+                        $query->orWhere('key', 'management');
+                    }
+                })
                 ->exists();
+        }
 
         if (! $hasPermission) {
             return response()->json([

@@ -45,7 +45,9 @@ class ChangeInformationRequest extends FormRequest
                 'max:255',
                 Rule::unique('users', 'email')->ignore($this->user()->id),
             ],
-            'contact_number' => ['required', 'string', 'max:11', 'regex:/^09\d{9}$/'],
+            'contact_number' => $this->user()?->role === 'manager'
+                ? ['nullable', 'string', 'max:11', 'regex:/^09\d{9}$/']
+                : ['required', 'string', 'max:11', 'regex:/^09\d{9}$/'],
             'current_password' => [
                 Rule::requiredIf($emailIsChanging),
                 'nullable',

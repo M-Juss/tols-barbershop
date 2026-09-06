@@ -20,6 +20,8 @@ class AppointmentBookingService
 
     public const MAX_PENDING_APPOINTMENTS_PER_CUSTOMER = 11;
 
+    public const STAFF_REVIEW_GROUP_SLOT_THRESHOLD = 5;
+
     private const STATUS_TRANSITIONS = [
         'pending' => ['confirmed', 'cancelled', 'rejected'],
         'confirmed' => ['completed', 'cancelled', 'no_show'],
@@ -114,6 +116,7 @@ class AppointmentBookingService
             ->where('appointment_date', '>=', $appointmentDate)
             ->where('appointment_date', '<', $date->addDay()->toDateString())
             ->whereIn('status', self::ACTIVE_STATUSES)
+            ->whereNotNull('active_slot_key')
             ->when(
                 $ignoreAppointmentIds !== [],
                 fn ($query) => $query->whereNotIn('id', $ignoreAppointmentIds),
@@ -278,6 +281,11 @@ class AppointmentBookingService
     public function activeSlotKey(int $barberUserId, string $appointmentDate, string $appointmentTime): string
     {
         return $barberUserId.'|'.$appointmentDate.'|'.substr($appointmentTime, 0, 5);
+    }
+
+    public function requiresStaffReviewBeforeReservation(array $slots): bool
+    {
+        return count($slots) >= self::STAFF_REVIEW_GROUP_SLOT_THRESHOLD;
     }
 
     public function assertDateAvailableAndLock(int $barberUserId, string $appointmentDate): void

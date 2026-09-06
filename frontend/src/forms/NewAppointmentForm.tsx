@@ -20,7 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRateLimit } from "@/hooks/useRateLimit";
-import { sanitizeText } from "@/lib/sanitizer";
+import {
+  normalizeEmail,
+  normalizePhone,
+  sanitizeString,
+  sanitizeText,
+} from "@/lib/sanitizer";
 import { cn } from "@/lib/utils";
 import { formatTime12, isTimeSlotUnavailable } from "@/lib/time-slots";
 import {
@@ -37,6 +42,53 @@ import {
   type PublicService,
 } from "@/services/public-booking.api";
 import { publicBookingSchema } from "@/validations/public-booking.validation";
+
+const REMEMBERED_DETAILS_KEY = "tol_public_booking_details";
+const REMEMBERED_DETAILS_TTL_MS = 90 * 24 * 60 * 60 * 1_000;
+const STORED_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type RememberedBookingDetails = {
+  fullname: string;
+  email: string;
+  contactNumber: string;
+  savedAt: number;
+};
+
+function readRememberedBookingDetails(): RememberedBookingDetails | null {
+  try {
+    const raw = window.localStorage.getItem(REMEMBERED_DETAILS_KEY);
+    if (!raw) return null;
+
+    const value = JSON.parse(raw) as Partial<RememberedBookingDetails>;
+    if (
+      typeof value.fullname !== "string" ||
+      typeof value.email !== "string" ||
+      typeof value.contactNumber !== "string" ||
+      typeof value.savedAt !== "number" ||
+      Date.now() - value.savedAt > REMEMBERED_DETAILS_TTL_MS
+    ) {
+      window.localStorage.removeItem(REMEMBERED_DETAILS_KEY);
+      return null;
+    }
+
+    const fullname = sanitizeString(value.fullname);
+    const email = normalizeEmail(value.email);
+    const contactNumber = normalizePhone(value.contactNumber);
+    if (
+      fullname.length < 2 ||
+      !STORED_EMAIL_PATTERN.test(email) ||
+      !/^09\d{9}$/.test(contactNumber)
+    ) {
+      window.localStorage.removeItem(REMEMBERED_DETAILS_KEY);
+      return null;
+    }
+
+    return { fullname, email, contactNumber, savedAt: value.savedAt };
+  } catch {
+    window.localStorage.removeItem(REMEMBERED_DETAILS_KEY);
+    return null;
+  }
+}
 
 function toApiDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -75,7 +127,7 @@ export function NewAppointmentForm() {
   const [settings, setSettings] = useState<PublicBookingSettings | null>(null);
   const [closedDates, setClosedDates] = useState<PublicClosedDate[]>([]);
   const [mode, setMode] = useState<"single" | "group">("single");
-  const [slotCount, setSlotCount] = useState(3);
+  const [slotCount, setSlotCount] = useState(2);
   const [selectedBarber, setSelectedBarber] = useState("");
   const [selectedService, setSelectedService] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>();
@@ -108,6 +160,16 @@ export function NewAppointmentForm() {
     cooldownMinutes: 3,
     storageKey: "public_booking_rate_limit",
   });
+
+  useEffect(() => {
+    const saved = readRememberedBookingDetails();
+    if (!saved) return;
+
+    setFullname(saved.fullname);
+    setEmail(saved.email);
+    setEmailConfirmation(saved.email);
+    setContactNumber(saved.contactNumber);
+  }, []);
 
   useEffect(() => {
     void getPublicBookingBootstrap()
@@ -270,6 +332,17 @@ export function NewAppointmentForm() {
     setLoading(true);
     try {
       const booking = await verifyBookingOtp(requestToken, otp);
+      if (pendingPayload) {
+        window.localStorage.setItem(
+          REMEMBERED_DETAILS_KEY,
+          JSON.stringify({
+            fullname: sanitizeString(pendingPayload.fullname),
+            email: normalizeEmail(pendingPayload.email),
+            contactNumber: normalizePhone(pendingPayload.contact_number),
+            savedAt: Date.now(),
+          } satisfies RememberedBookingDetails),
+        );
+      }
       setResult(booking);
       setOtpOpen(false);
       rateLimit.reset();
@@ -287,15 +360,11 @@ export function NewAppointmentForm() {
     setSelectedService("");
     setSelectedDate(undefined);
     setSelectedTime("");
-    setSlotCount(3);
+    setSlotCount(2);
     setSlotServices([]);
     setSlotTimes([]);
     setSlotNames([]);
     setNotes("");
-    setFullname("");
-    setEmail("");
-    setEmailConfirmation("");
-    setContactNumber("");
     setTermsAccepted(false);
     setPrivacyAcknowledged(false);
     setPendingPayload(null);
@@ -349,7 +418,7 @@ export function NewAppointmentForm() {
                     <p className="text-sm font-medium text-gray-700">Per Person</p>
                     {Array.from({ length: slotCount }, (_, index) => (
                       <div key={index} className="grid grid-cols-1 items-end gap-3 rounded-lg bg-gray-50 p-3 sm:grid-cols-[3fr_1fr_1fr]">
-                        <InputWithLabel id={`slot-name-${index}`} label={index === 0 ? "Booking Contact" : `Person ${index + 1}`} value={index === 0 ? fullname : slotNames[index] ?? ""} onChange={(event) => {
+                        <InputWithLabel id={`slot-name-${index}`} label={`Person ${index + 1}`} value={index === 0 ? fullname : slotNames[index] ?? ""} onChange={(event) => {
                           const value = event.target.value;
                           if (index === 0) {
                             setFullname(value);
@@ -380,7 +449,7 @@ export function NewAppointmentForm() {
               {mode === "single" && selectedServiceData && <SummaryRow name={selectedServiceData.name} description={selectedServiceData.description} price={singleTotal} />}
               {mode === "group" && Array.from({ length: slotCount }, (_, index) => {
                 const service = services.find((item) => String(item.id) === slotServices[index]);
-                return <SummaryRow key={index} name={index === 0 ? fullname || "Booking contact" : slotNames[index] || `Person ${index + 1}`} description={service?.name ?? "No service selected"} price={Number(service?.price ?? 0)} />;
+                return <SummaryRow key={index} name={index === 0 ? fullname || "Person 1" : slotNames[index] || `Person ${index + 1}`} description={service?.name ?? "No service selected"} price={Number(service?.price ?? 0)} />;
               })}
               <div className="flex items-center justify-between border-t border-gray-200 pt-3"><p className="font-semibold text-gray-900">Total</p><p className="font-semibold text-gray-900">₱{total.toFixed(2)}</p></div>
             </div>
@@ -437,7 +506,7 @@ export function NewAppointmentForm() {
 
       <Dialog open={result !== null} onOpenChange={(open) => !open && resetForm()}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-green-600" />Booking Request Submitted</DialogTitle><DialogDescription>Your request is pending staff confirmation. We also sent the reference to your verified email.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-green-600" />Booking Request Submitted</DialogTitle><DialogDescription>Your request is pending staff confirmation. Save this booking reference for your records.</DialogDescription></DialogHeader>
           <div className="rounded-xl bg-slate-100 p-5 text-center"><p className="text-xs font-medium uppercase tracking-wider text-gray-500">Booking Reference</p><p className="mt-2 text-2xl font-bold tracking-wide text-primary">{result?.reference}</p><p className="mt-2 text-sm font-medium capitalize text-amber-700">{result?.status}</p></div>
           <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 text-sm">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

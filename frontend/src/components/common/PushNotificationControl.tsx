@@ -38,7 +38,7 @@ const statusLabel = {
 };
 
 type PushNotificationControlProps = {
-  variant?: "sidebar" | "settings";
+  variant?: "sidebar" | "settings" | "account-menu";
 };
 
 export function PushNotificationControl({
@@ -49,6 +49,7 @@ export function PushNotificationControl({
   const isEnabled = status === "enabled";
   const canEnable = status === "disabled" || status === "error";
   const isSettingsVariant = variant === "settings";
+  const isAccountMenuVariant = variant === "account-menu";
 
   const handleEnable = async () => {
     if (await enable()) {
@@ -75,6 +76,8 @@ export function PushNotificationControl({
           "flex w-full items-center gap-3 transition-colors",
           isSettingsVariant
             ? "py-5 text-gray-900 hover:text-primary"
+            : isAccountMenuVariant
+              ? "px-4 py-3 text-gray-800 hover:bg-gray-50"
             : "rounded-lg px-4 py-3 text-gray-300 hover:bg-slate-800 hover:text-white",
         )}
       >
@@ -83,6 +86,7 @@ export function PushNotificationControl({
             className={cn(
               "size-5 shrink-0",
               isSettingsVariant && "text-green-600",
+              isAccountMenuVariant && "text-green-600",
             )}
           />
         ) : (
@@ -90,12 +94,19 @@ export function PushNotificationControl({
             className={cn(
               "size-5 shrink-0",
               isSettingsVariant && "text-gray-500",
+              isAccountMenuVariant && "text-gray-700",
             )}
           />
         )}
         <span className="flex-1 text-left">
           <span className={cn(isSettingsVariant && "block text-sm font-bold")}>
-            {isSettingsVariant ? "Device Notifications" : "Notification"}
+            {isSettingsVariant
+              ? "Device Notifications"
+              : isAccountMenuVariant
+                ? isEnabled
+                  ? "Device notifications enabled"
+                  : "Enable device notifications"
+                : "Notification"}
           </span>
           {isSettingsVariant ? (
             <span className="mt-0.5 block text-sm font-normal text-gray-500">
@@ -106,6 +117,7 @@ export function PushNotificationControl({
         <span
           className={cn(
             "text-xs",
+            isAccountMenuVariant && "sr-only",
             isSettingsVariant
               ? "rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-600"
               : "text-gray-400",

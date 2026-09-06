@@ -10,6 +10,7 @@ class Module extends Model
     protected $fillable = [
         'key',
         'name',
+        'parent_key',
     ];
 
     public function roles(): BelongsToMany

@@ -73,6 +73,7 @@ export interface Appointment {
   price: number | string;
   status: AppointmentStatus;
   is_walkin: boolean;
+  booking_source: "public" | "staff_assisted" | "walkin";
   batch_id: string | null;
   customer_name: string | null;
   customer_name_snapshot: string | null;
@@ -135,6 +136,17 @@ export interface CreateAppointmentData {
   walkin_customer_name?: string;
   walkin_customer_contact_number?: string;
 }
+
+export type CreateAssistedBookingData = {
+  customer_name: string;
+  customer_email?: string | null;
+  customer_contact_number?: string | null;
+  service_id: number;
+  barber_user_id: number;
+  appointment_date: string;
+  appointment_time: string;
+  notes?: string | null;
+};
 
 export interface UpdateAppointmentData {
   booking_customer_id: number;
@@ -296,6 +308,20 @@ export const createAppointment = async (
     method: "POST",
     body: JSON.stringify(data),
   });
+
+  return response.data;
+};
+
+export const createAssistedBooking = async (
+  data: CreateAssistedBookingData,
+): Promise<Appointment> => {
+  const response = await authFetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/assisted-bookings`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 
   return response.data;
 };

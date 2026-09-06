@@ -13,6 +13,7 @@ class ModuleResource extends JsonResource
             'id' => $this->id,
             'key' => $this->key,
             'name' => $this->name,
+            'parent_key' => $this->parent_key,
         ];
     }
 }

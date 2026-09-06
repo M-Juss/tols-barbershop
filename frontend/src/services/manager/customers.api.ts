@@ -3,8 +3,8 @@ import { authFetch } from "@/lib/api";
 export interface CustomerItem {
   id: number;
   fullname: string;
-  email: string;
-  contact_number: string;
+  email: string | null;
+  contact_number: string | null;
   is_active: boolean;
   initials: string;
   total_visits: number;
@@ -39,8 +39,8 @@ export interface CustomerListResponse {
 export interface CustomerDetail {
   id: number;
   fullname: string;
-  email: string;
-  contact_number: string;
+  email: string | null;
+  contact_number: string | null;
   is_active: boolean;
   initials: string;
   completed_count: number;

@@ -66,6 +66,7 @@ class AppointmentResource extends JsonResource
             'price' => $this->price,
             'status' => $this->status,
             'is_walkin' => (bool) $this->is_walkin,
+            'booking_source' => $this->booking_source,
             'batch_id' => $this->batch_id,
             'customer_name' => $this->customer_name,
             'customer_name_snapshot' => $this->customer_name_snapshot,

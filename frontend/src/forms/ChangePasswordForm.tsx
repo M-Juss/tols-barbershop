@@ -36,7 +36,9 @@ const passwordRequirements = [
 type ChangePasswordFormProps = {
   open: boolean;
   onClose: () => void;
-  onSubmit?: (payload: ChangePasswordSchemaFormValues) => Promise<void> | void;
+  onSubmit?: (
+    payload: ChangePasswordSchemaFormValues,
+  ) => Promise<boolean | void> | boolean | void;
   title?: string;
 }
 
@@ -80,8 +82,8 @@ export function ChangePasswordForm({
   };
 
   const onFormSubmit = async (data: ChangePasswordSchemaFormValues) => {
-    await onSubmit?.(data);
-    onClose();
+    const shouldClose = await onSubmit?.(data);
+    if (shouldClose !== false) onClose();
   };
 
   return (
