@@ -4,6 +4,7 @@ export interface Module {
   id: number;
   key: string;
   name: string;
+  parent_key: string | null;
 }
 
 export interface Role {

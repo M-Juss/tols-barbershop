@@ -5,6 +5,7 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AppointmentAddOnController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AppointmentFeedbackController;
+use App\Http\Controllers\AssistedBookingController;
 use App\Http\Controllers\BarberController;
 use App\Http\Controllers\BookingEmailDeliveryController;
 use App\Http\Controllers\ClosedDatesController;
@@ -82,16 +83,16 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::apiResource('/services', ServiceController::class)
-            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read'])
-            ->middlewareFor(['show'], ['role:admin,manager', 'module:management', 'throttle:authenticated-read'])
-            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,management-services,appointment,walkin', 'throttle:authenticated-read'])
+            ->middlewareFor(['show'], ['role:admin,manager', 'module:management,management-services', 'throttle:authenticated-read'])
+            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management', 'module:management-services', 'throttle:authenticated-write']);
         Route::apiResource('/service-add-ons', ServiceAddOnController::class)
-            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,appointment', 'throttle:authenticated-read'])
-            ->middlewareFor(['show'], ['role:admin,manager', 'module:management,appointment', 'throttle:authenticated-read'])
-            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,management-services,appointment', 'throttle:authenticated-read'])
+            ->middlewareFor(['show'], ['role:admin,manager', 'module:management,management-services,appointment', 'throttle:authenticated-read'])
+            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management,management-services', 'throttle:authenticated-write']);
         Route::apiResource('/gallery-images', GalleryImageController::class)
             ->only(['index', 'store', 'update', 'destroy'])
-            ->middleware(['role:admin,manager', 'module:management'])
+            ->middleware(['role:admin,manager', 'module:management,management-gallery'])
             ->middlewareFor(['index'], 'throttle:authenticated-read')
             ->middlewareFor(['store', 'update', 'destroy'], 'throttle:authenticated-write');
         Route::apiResource('/admin', AdminController::class)
@@ -105,33 +106,35 @@ Route::prefix('v1')->group(function () {
         Route::get('/modules', [ModuleController::class, 'index'])->middleware(['role:manager', 'throttle:authenticated-read']);
 
         Route::apiResource('/barber', BarberController::class)
-            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read'])
-            ->middlewareFor(['show'], ['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read'])
-            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middlewareFor(['index'], ['role:admin,manager', 'module:management,management-barbers,appointment,walkin', 'throttle:authenticated-read'])
+            ->middlewareFor(['show'], ['role:admin,manager', 'module:management,management-barbers,appointment,walkin', 'throttle:authenticated-read'])
+            ->middlewareFor(['store', 'update', 'destroy'], ['role:admin,manager', 'module:management,management-barbers', 'throttle:authenticated-write']);
         Route::get('/booking-schedule', [SettingsController::class, 'show'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
         Route::get('/booking-schedule/day', [SettingsController::class, 'day'])
-            ->middleware(['role:admin,manager', 'module:management,appointment,walkin', 'throttle:authenticated-read']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule,appointment,walkin', 'throttle:authenticated-read']);
         Route::put('/booking-schedule', [SettingsController::class, 'update'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::get('/schedule-open-slots', [ScheduleOpenSlotController::class, 'index'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
         Route::post('/schedule-open-slots', [ScheduleOpenSlotController::class, 'store'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::delete('/schedule-open-slots/{scheduleOpenSlot}', [ScheduleOpenSlotController::class, 'destroy'])
             ->whereNumber('scheduleOpenSlot')
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::get('/closed-dates/activity', [ClosedDatesController::class, 'activity'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
         Route::get('/closed-dates/check-conflicts', [ClosedDatesController::class, 'checkConflicts'])
-            ->middleware(['role:admin,manager', 'module:management', 'throttle:authenticated-read']);
+            ->middleware(['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-read']);
         Route::apiResource('/closed-dates', ClosedDatesController::class)
             ->only(['index', 'store', 'update'])
-            ->middlewareFor('index', ['role:admin,manager', 'module:dashboard,management,appointment,walkin', 'throttle:authenticated-read'])
-            ->middlewareFor('store', ['role:admin,manager', 'module:management', 'throttle:authenticated-write'])
-            ->middlewareFor('update', ['role:admin,manager', 'module:management', 'throttle:authenticated-write']);
+            ->middlewareFor('index', ['role:admin,manager', 'module:dashboard,management,management-schedule,appointment,walkin', 'throttle:authenticated-read'])
+            ->middlewareFor('store', ['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write'])
+            ->middlewareFor('update', ['role:admin,manager', 'module:management,management-schedule', 'throttle:authenticated-write']);
         Route::put('/appointments/batch/{batchId}/status', [AppointmentController::class, 'updateBatchStatus'])
             ->where('batchId', 'BATCH-[A-Za-z0-9-]+')
+            ->middleware(['role:admin,manager', 'module:appointment', 'throttle:booking-action']);
+        Route::post('/assisted-bookings', [AssistedBookingController::class, 'store'])
             ->middleware(['role:admin,manager', 'module:appointment', 'throttle:booking-action']);
         Route::get('/appointments/available-slots', [AppointmentController::class, 'availableSlots'])->middleware(['role:admin,manager', 'module:appointment', 'throttle:authenticated-read']);
         Route::get('/appointments/history', [AppointmentController::class, 'history'])->middleware(['role:admin,manager', 'module:history', 'throttle:authenticated-read']);

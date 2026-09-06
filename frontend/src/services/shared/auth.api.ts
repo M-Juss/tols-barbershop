@@ -4,7 +4,7 @@ export type AuthUser = {
   id: number;
   fullname: string;
   email: string;
-  contact_number: string;
+  contact_number: string | null;
   role: string;
   image?: string | null;
   created_at?: string;
@@ -39,6 +39,19 @@ type CurrentUserResponse = {
   data: AuthUser;
 };
 
+export type UpdateAccountInformationData = {
+  fullname: string;
+  email: string;
+  contact_number?: string | null;
+  current_password?: string;
+};
+
+export type ChangePasswordData = {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+};
+
 export const loginRequest = async (data: {
   email: string;
   password: string;
@@ -60,6 +73,24 @@ export const logoutRequest = async (pushEndpoint?: string) => {
 
 export const getCurrentUserRequest = async (): Promise<CurrentUserResponse> => {
   return publicFetch(`${process.env.NEXT_PUBLIC_API_URL}/user`);
+};
+
+export const updateAccountInformationRequest = async (
+  data: UpdateAccountInformationData,
+): Promise<CurrentUserResponse> => {
+  return authFetch(`${process.env.NEXT_PUBLIC_API_URL}/change-information`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const changePasswordRequest = async (
+  data: ChangePasswordData,
+): Promise<AuthActionResponse> => {
+  return authFetch(`${process.env.NEXT_PUBLIC_API_URL}/change-password`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
 };
 
 export const forgotPasswordRequest = async (data: {

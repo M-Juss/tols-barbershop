@@ -170,6 +170,7 @@ class AppointmentController extends Controller
                     'price' => $service->price,
                     'status' => 'completed',
                     'is_walkin' => true,
+                    'booking_source' => 'walkin',
                     'walkin_customer_name' => $validated['walkin_customer_name'] ?? null,
                     'walkin_customer_contact_number' => $validated['walkin_customer_contact_number'] ?? null,
                     'notes' => $validated['notes'] ?? null,
@@ -270,47 +271,75 @@ class AppointmentController extends Controller
             return $this->error('This group of bookings cannot be updated together. Please manage them individually.', [], 409);
         }
 
-        $result = DB::transaction(function () use ($batchId, $snapshot, $status, $validated): array {
-            if ($status === 'confirmed') {
-                $first = $snapshot->first();
-                $this->bookingService->validateAndLock(
-                    (int) $first->booking_customer_id,
-                    (int) $first->barber_user_id,
-                    $first->appointment_date->toDateString(),
-                    $snapshot->map(fn (Appointment $appointment): array => [
-                        'service_id' => (int) $appointment->service_id,
-                        'appointment_time' => substr((string) $appointment->appointment_time, 0, 5),
-                    ])->all(),
-                    0,
-                    $snapshot->modelKeys(),
+        try {
+            $result = DB::transaction(function () use ($batchId, $snapshot, $status, $validated): array {
+                if ($status === 'confirmed') {
+                    $first = $snapshot->first();
+                    $this->bookingService->validateAndLock(
+                        (int) $first->booking_customer_id,
+                        (int) $first->barber_user_id,
+                        $first->appointment_date->toDateString(),
+                        $snapshot->map(fn (Appointment $appointment): array => [
+                            'service_id' => (int) $appointment->service_id,
+                            'appointment_time' => substr((string) $appointment->appointment_time, 0, 5),
+                        ])->all(),
+                        0,
+                        $snapshot->modelKeys(),
+                    );
+                }
+
+                $appointments = Appointment::where('batch_id', $batchId)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($appointments->count() !== $snapshot->count()
+                    || $appointments->contains(fn (Appointment $appointment): bool => $appointment->status !== 'pending')) {
+                    return ['error' => 'The group changed while it was being updated. Refresh and try again.'];
+                }
+
+                $now = Carbon::now();
+                foreach ($appointments as $appointment) {
+                    $appointment->update([
+                        'status' => $status,
+                        'active_slot_key' => $status === 'confirmed'
+                            ? $this->bookingService->activeSlotKey(
+                                (int) $appointment->barber_user_id,
+                                $appointment->appointment_date->toDateString(),
+                                (string) $appointment->appointment_time,
+                            )
+                            : null,
+                        'confirmed_at' => $status === 'confirmed' ? $now : null,
+                        'rejected_at' => $status === 'rejected' ? $now : null,
+                        'cancellation_reason' => $status === 'rejected'
+                            ? ($validated['cancellation_reason'] ?? null)
+                            : null,
+                    ]);
+                }
+
+                return ['appointments' => $appointments];
+            }, 3);
+        } catch (ValidationException $exception) {
+            $hasTimeConflict = collect($exception->errors())
+                ->flatten()
+                ->contains(fn (string $message): bool => str_contains($message, 'overlaps another booking'));
+
+            if ($status === 'confirmed' && $hasTimeConflict) {
+                return $this->error(
+                    'Cannot process this group booking because one or more requested times conflict with an existing booking.',
+                    $exception->errors(),
+                    422,
                 );
             }
 
-            $appointments = Appointment::where('batch_id', $batchId)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
-
-            if ($appointments->count() !== $snapshot->count()
-                || $appointments->contains(fn (Appointment $appointment): bool => $appointment->status !== 'pending')) {
-                return ['error' => 'The group changed while it was being updated. Refresh and try again.'];
-            }
-
-            $now = Carbon::now();
-            foreach ($appointments as $appointment) {
-                $appointment->update([
-                    'status' => $status,
-                    'active_slot_key' => $status === 'confirmed' ? $appointment->active_slot_key : null,
-                    'confirmed_at' => $status === 'confirmed' ? $now : null,
-                    'rejected_at' => $status === 'rejected' ? $now : null,
-                    'cancellation_reason' => $status === 'rejected'
-                        ? ($validated['cancellation_reason'] ?? null)
-                        : null,
-                ]);
-            }
-
-            return ['appointments' => $appointments];
-        }, 3);
+            throw $exception;
+        } catch (UniqueConstraintViolationException) {
+            return $this->error(
+                'Cannot process this group booking because one or more requested times conflict with an existing booking.',
+                [],
+                422,
+            );
+        }
 
         if (isset($result['error'])) {
             return $this->error($result['error'], [], 409);
@@ -690,6 +719,7 @@ class AppointmentController extends Controller
                 $weekEnd->toDateString(),
             ])
             ->whereIn('status', AppointmentBookingService::ACTIVE_STATUSES)
+            ->whereNotNull('active_slot_key')
             ->whereIn('barber_user_id', $activeBarberIds)
             ->get([
                 'id',
@@ -936,6 +966,7 @@ class AppointmentController extends Controller
             ->where('appointment_date', '>=', $validated['date'])
             ->where('appointment_date', '<', $nextDate)
             ->whereIn('status', ['pending', 'confirmed'])
+            ->whereNotNull('active_slot_key')
             ->when(
                 isset($validated['ignore_appointment_id']),
                 fn ($query) => $query->whereKeyNot($validated['ignore_appointment_id']),

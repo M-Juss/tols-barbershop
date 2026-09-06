@@ -83,6 +83,7 @@ test('admin page APIs carry their matching module middleware', function (string 
     'dashboard weekly schedule' => ['GET', '/api/v1/appointments/overview/weekly-schedule?date=2026-07-20', 'dashboard'],
     'management' => ['POST', '/api/v1/services', 'management'],
     'appointment' => ['GET', '/api/v1/appointments', 'appointment'],
+    'assisted booking' => ['POST', '/api/v1/assisted-bookings', 'appointment'],
     'walk-in' => ['GET', '/api/v1/walkins/stats', 'walkin'],
     'history' => ['GET', '/api/v1/appointments/history', 'history'],
     'reports' => ['GET', '/api/v1/analytics/revenue', 'reports'],

@@ -1,5 +1,5 @@
-import Management from "@/app/manager/management/page";
+import { redirect } from "next/navigation";
 
-export default function AdminManagement() {
-  return <Management />;
+export default function AdminManagementPage() {
+  redirect("/admin/management/services");
 }

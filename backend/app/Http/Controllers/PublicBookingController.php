@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PublicBookingRequest;
 use App\Http\Requests\VerifyBookingOtpRequest;
 use App\Models\Appointment;
-use App\Models\BookingCustomer;
 use App\Models\BookingVerification;
 use App\Models\ClosedDates;
 use App\Models\Notification as StaffNotification;
@@ -13,7 +12,7 @@ use App\Models\Service;
 use App\Models\User;
 use App\Notifications\BookingMailNotification;
 use App\Services\AppointmentBookingService;
-use App\Services\BookingEmailService;
+use App\Services\BookingCustomerService;
 use App\Services\BookingScheduleService;
 use App\Services\PushNotificationService;
 use App\Support\DisplayId;
@@ -37,7 +36,7 @@ class PublicBookingController extends Controller
 
     public function __construct(
         private readonly AppointmentBookingService $bookingService,
-        private readonly BookingEmailService $emailService,
+        private readonly BookingCustomerService $customerService,
         private readonly BookingScheduleService $scheduleService,
     ) {}
 
@@ -101,6 +100,7 @@ class PublicBookingController extends Controller
             ->where('barber_user_id', $validated['barber_id'])
             ->whereDate('appointment_date', $validated['date'])
             ->whereIn('status', AppointmentBookingService::ACTIVE_STATUSES)
+            ->whereNotNull('active_slot_key')
             ->get(['id', 'service_id', 'appointment_time', 'duration_minutes'])
             ->map(fn (Appointment $appointment): array => [
                 'appointment_time' => substr((string) $appointment->appointment_time, 0, 5),
@@ -189,12 +189,10 @@ class PublicBookingController extends Controller
                 }
 
                 $payload = $verification->payload;
-                $customer = BookingCustomer::query()->updateOrCreate(
-                    ['email' => $verification->email],
-                    [
-                        'fullname' => $payload['fullname'],
-                        'contact_number' => $payload['contact_number'],
-                    ],
+                $customer = $this->customerService->findOrCreate(
+                    $payload['fullname'],
+                    $verification->email,
+                    $payload['contact_number'],
                 );
 
                 $resources = $this->bookingService->validateAndLock(
@@ -217,6 +215,9 @@ class PublicBookingController extends Controller
                 $batchId = count($payload['appointments']) > 1
                     ? 'BATCH-'.Str::upper(Str::random(24))
                     : null;
+                $requiresStaffReview = $this->bookingService->requiresStaffReviewBeforeReservation(
+                    $payload['appointments'],
+                );
                 $appointments = [];
 
                 foreach ($payload['appointments'] as $index => $slot) {
@@ -232,11 +233,14 @@ class PublicBookingController extends Controller
                         'duration_minutes' => $service->duration,
                         'price' => $service->price,
                         'status' => 'pending',
-                        'active_slot_key' => $this->bookingService->activeSlotKey(
-                            $resources['barber']->id,
-                            $payload['appointment_date'],
-                            $slot['appointment_time'],
-                        ),
+                        'booking_source' => 'public',
+                        'active_slot_key' => $requiresStaffReview
+                            ? null
+                            : $this->bookingService->activeSlotKey(
+                                $resources['barber']->id,
+                                $payload['appointment_date'],
+                                $slot['appointment_time'],
+                            ),
                         'batch_id' => $batchId,
                         'customer_name' => $memberName,
                         'customer_name_snapshot' => $memberName ?: $customer->fullname,
@@ -274,14 +278,6 @@ class PublicBookingController extends Controller
             : DisplayId::booking($first->id);
 
         $this->notifyStaff($appointments->all(), $reference);
-        $this->emailService->createAndSend(
-            $first,
-            'pending',
-            $this->emailService->pendingContent($first, $appointments->count()),
-            null,
-            $result['batch_id'],
-        );
-
         EntityChange::dispatch('appointments');
 
         return $this->created('Booking request submitted.', [

@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Search,
   Plus,
+  CalendarPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,13 @@ const PendingAppointmentDetailDialog = dynamic(
       (mod) => mod.PendingAppointmentDetailDialog
     ),
   { ssr: false }
+);
+const AssistedBookingForm = dynamic(
+  () =>
+    import("@/forms/AssistedBookingForm").then(
+      (mod) => mod.AssistedBookingForm,
+    ),
+  { ssr: false },
 );
 import { SectionCard } from "@/components/common/SectionCard";
 import { TextAreaWithLabel } from "@/components/common/TextAreaWithLabel";
@@ -301,9 +309,8 @@ function AppointmentRow({
   return (
     <div className={cn("relative rounded-xl border border-gray-200 bg-white p-4", className)}>
       <div className="pr-10">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Customer</p>
-        <p className="mt-0.5 break-words font-bold text-gray-900 text-sm">{appt.customer.fullname}</p>
         <p className="mt-0.5 text-xs text-gray-400">{formatBookingId(appt.id)}</p>
+        <p className="mt-0.5 break-words font-bold text-gray-900 text-sm">{appt.customer.fullname}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
           {appt.customer.email ? (
             <span className="inline-flex min-w-0 items-center gap-1.5 break-all">
@@ -549,6 +556,7 @@ export function Appointment() {
   const [now, setNow] = useState(() => Date.now());
   const [resendingDeliveryId, setResendingDeliveryId] = useState<number | null>(null);
   const [addOnAppointment, setAddOnAppointment] = useState<Appointment | null>(null);
+  const [assistedBookingOpen, setAssistedBookingOpen] = useState(false);
 
   const loadAppointments = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -945,13 +953,23 @@ export function Appointment() {
 
   return (
     <div className="w-full bg-slate-100 p-4 sm:p-6 pb-12 sm:pb-10 font-sans">
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          Schedules
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Manage booking requests and scheduled bookings
-        </p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Schedules
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Manage booking requests and scheduled bookings
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={() => setAssistedBookingOpen(true)}
+          className="w-full gap-2 bg-blue-600 text-white hover:bg-blue-700 sm:w-auto"
+        >
+          <CalendarPlus className="size-4" />
+          Assisted Booking
+        </Button>
       </div>
 
       <div
@@ -1487,6 +1505,15 @@ export function Appointment() {
           if (!open) setAddOnAppointment(null);
         }}
         onUpdated={handleAddOnUpdated}
+      />
+
+      <AssistedBookingForm
+        open={assistedBookingOpen}
+        onOpenChange={setAssistedBookingOpen}
+        onSuccess={async () => {
+          await loadAppointments();
+          window.dispatchEvent(new CustomEvent("appointments:updated"));
+        }}
       />
 
     </div>

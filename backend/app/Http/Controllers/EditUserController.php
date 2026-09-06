@@ -72,7 +72,9 @@ class EditUserController extends Controller
         $updates = [
             'fullname' => $validated['fullname'],
             'email' => $validated['email'],
-            'contact_number' => $validated['contact_number'],
+            'contact_number' => array_key_exists('contact_number', $validated)
+                ? $validated['contact_number']
+                : $user->contact_number,
         ];
 
         $user->forceFill($updates)->save();

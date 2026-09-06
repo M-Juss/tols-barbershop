@@ -20,7 +20,9 @@ class AppointmentNotificationService
         ?int $createdByUserId = null,
     ): ?BookingEmailDelivery {
         $appointment->loadMissing(['bookingCustomer', 'barber', 'service', 'addOns']);
-        if (! $appointment->bookingCustomer) {
+        if (! $appointment->bookingCustomer
+            || blank($this->recipientEmail($appointment))
+            || ! in_array($status, ['confirmed', 'rejected', 'cancelled', 'completed'], true)) {
             return null;
         }
 
@@ -45,7 +47,8 @@ class AppointmentNotificationService
         ?int $createdByUserId = null,
     ): ?BookingEmailDelivery {
         $appointment->loadMissing(['bookingCustomer', 'barber', 'service', 'addOns']);
-        if (! $appointment->bookingCustomer) {
+        if (! $appointment->bookingCustomer
+            || blank($this->recipientEmail($appointment))) {
             return null;
         }
 
@@ -76,7 +79,8 @@ class AppointmentNotificationService
 
         $appointments->loadMissing(['bookingCustomer', 'barber', 'service', 'addOns']);
         $first = $appointments->first();
-        if (! $first?->bookingCustomer) {
+        if (! $first?->bookingCustomer
+            || blank($this->recipientEmail($first))) {
             return null;
         }
 
@@ -203,5 +207,16 @@ class AppointmentNotificationService
         ]);
 
         return rtrim((string) config('app.frontend_url'), '/').'/feedback?token='.$plainToken;
+    }
+
+    private function recipientEmail(Appointment $appointment): ?string
+    {
+        if ($appointment->booking_source === 'staff_assisted') {
+            return filled($appointment->customer_email_snapshot)
+                ? $appointment->customer_email_snapshot
+                : null;
+        }
+
+        return $appointment->customer_email_snapshot ?? $appointment->bookingCustomer?->email;
     }
 }

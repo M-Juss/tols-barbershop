@@ -29,7 +29,8 @@ export default function PrivacyPolicyPage() {
           <li><strong>Email records:</strong> one-time verification data and delivery status for booking updates. Verification codes are stored as secure hashes and expire.</li>
           <li><strong>Bookings:</strong> confirmation, rejection, rescheduling, cancellation, completion, no-show, and related reasons or timestamps.</li>
           <li><strong>Feedback:</strong> rating, optional comment, booking relationship, and whether staff feature the review publicly.</li>
-          <li><strong>Walk-ins and staff accounts:</strong> operational customer details entered by staff and the identity, contact, role, session, and security data required for authorized staff access.</li>
+          <li><strong>Walk-ins, assisted bookings, and staff accounts:</strong> operational customer details entered by staff and the identity, contact, role, session, and security data required for authorized staff access.</li>
+          <li><strong>Remembered booking details:</strong> after a successful email verification, your name, email address, and phone number are saved in your current browser for up to 90 days.</li>
           <li><strong>Technical data:</strong> security cookies, request metadata, rate-limit records, and application logs.</li>
         </ul>
       </section>
@@ -38,7 +39,7 @@ export default function PrivacyPolicyPage() {
         <h2>3. How we use information</h2>
         <p>
           We use this information to verify booking email addresses, review and
-          manage bookings, send status updates, maintain an email-based CRM,
+          manage bookings, send status updates, maintain customer booking history,
           request one rating after a completed booking, operate staff functions,
           prepare business reports, prevent misuse, and meet legal obligations.
           Customers do not need or receive website accounts.
@@ -59,7 +60,10 @@ export default function PrivacyPolicyPage() {
         <h2>5. Cookies and security</h2>
         <p>
           Staff areas use required session and security cookies. The public booking
-          form may keep short-lived cooldown information in browser storage. We use
+          form may keep short-lived cooldown information in browser storage. After a
+          successful email verification, it also stores your booking contact details
+          on that device for up to 90 days. You can remove them by clearing this
+          website&apos;s browser data. We use
           input validation, sanitization, rate limits, hashed verification codes,
           role-restricted staff access, and security headers. No system can guarantee
           absolute security.
@@ -71,8 +75,9 @@ export default function PrivacyPolicyPage() {
         <p>
           We retain booking, CRM, feedback, email-delivery, accounting, and security
           records as reasonably needed for shop operations, disputes, reporting, and
-          legal obligations. Expired verification records and unnecessary technical
-          data may be deleted or anonymized under our retention practices.
+          legal obligations. Remembered browser details expire after 90 days unless
+          replaced or removed earlier. Expired verification records and unnecessary
+          technical data may be deleted or anonymized under our retention practices.
         </p>
       </section>
 

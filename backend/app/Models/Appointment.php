@@ -23,6 +23,7 @@ class Appointment extends Model
         'status',
         'active_slot_key',
         'is_walkin',
+        'booking_source',
         'walkin_customer_name',
         'walkin_customer_contact_number',
         'notes',

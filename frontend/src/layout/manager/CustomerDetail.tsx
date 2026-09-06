@@ -221,11 +221,11 @@ export function CustomerDetail({ id }: CustomerDetailProps) {
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mt-1 text-sm text-gray-500">
               <div className="flex items-center gap-1">
                 <Mail className="h-3.5 w-3.5" />
-                {customer.email}
+                {customer.email ?? "No email"}
               </div>
               <div className="flex items-center gap-1">
                 <Phone className="h-3.5 w-3.5" />
-                {customer.contact_number}
+                {customer.contact_number ?? "No contact number"}
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
