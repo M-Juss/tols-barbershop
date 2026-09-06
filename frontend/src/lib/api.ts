@@ -23,7 +23,9 @@ export class ApiError extends Error {
 export const AUTH_UNAUTHORIZED_EVENT = "auth:unauthorized";
 
 const API_ORIGIN = (
-  process.env.NEXT_PUBLIC_API_ORIGIN ?? ""
+  process.env.NODE_ENV === "production"
+    ? ""
+    : process.env.NEXT_PUBLIC_API_ORIGIN ?? ""
 ).replace(/\/$/, "");
 const API_PATH_PREFIX = "/api/v1";
 const CSRF_COOKIE_URL = API_ORIGIN
@@ -314,7 +316,7 @@ function getSafeReferrer(): string | undefined {
 
 function getApiRequestUrl(url: string): string {
   if (API_ORIGIN) {
-    const parsed = new URL(url);
+    const parsed = new URL(url, API_ORIGIN);
     if (
       parsed.origin !== API_ORIGIN ||
       parsed.username ||
